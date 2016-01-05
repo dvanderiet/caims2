@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Spyder Editor
+Spyder Editor 
 
-This is a temporary script file.
+This is a temporary script file
 """
 #!/usr/bin/python
 #BDT python program
