@@ -1,11 +1,40 @@
 # -*- coding: utf-8 -*-
-"""
-Spyder Editor    
-
-This is a temporary script file.
-"""
 #!/usr/bin/python
-#BDT python program
+"""
+PROGRAM NAME:     etl_caims_cabs_bdt.py                                  
+LOCATION:                      
+PROGRAMMER(S):    Dan VandeRiet                                 
+DESCRIPTION:      CAIMS Extract/Transformation/Load program for Bill Data Tape
+                  (BDT) records.
+                  
+REPLACES:         Legacy CTL program BC100FT0 - LOAD BCCBBIL FOCUS DATABASE.
+                                                                         
+LANGUAGE/VERSION: Python/2.7.10                                          
+INITIATION DATE:  x/x/2016                                                
+INPUT FILE(S):    PBCL.CY.XRU0102O.CABS.G0358V00.txt (build from GDG)
+LOCATION:         MARION MAINFRAME           
+                                                                         
+OUTPUT:           ORACLE DWBS001P                                
+                  Table names CAIMS_BDT_*
+                                                                         
+EXTERNAL CALLS:                                         
+                                                                         
+LOCATION:         pansco-pdm: /opt/IntrNet/p271app/rpt271/macros         
+                                                                         
+Copyright 2016, CenturyLink All Rights Reserved. Unpublished and          
+Confidential Property of CenturyLink.                                          
+                                                                         
+CONFIDENTIAL: Disclose and distribute solely to CenturyLink employees
+having a need to know.
+=========================================================================
+                 R E V I S I O N      H I S T O R Y                      
+=========================================================================
+PROGRAMMER:                                   DATE:        
+VALIDATOR:                                    DATE:                      
+REASON:  
+
+"""
+
 import datetime
 import inspect
 #import collections
@@ -159,19 +188,19 @@ def main():
     
 #DECLARE TABLE ARRAYS AND DICTIONARIES
     BDT_BCCBBIL_tbl=collections.OrderedDict() 
-    BDT_BCCBBIL_DEFN_DICT=createTableTypeDict('BDT_BCCBBIL')
+    BDT_BCCBBIL_DEFN_DICT=createTableTypeDict('CAIMS_BDT_BCCBBIL')
     BDT_BALDTL_tbl=collections.OrderedDict()
-    BDT_BALDTL_DEFN_DICT=createTableTypeDict('BDT_BALDTL')
+    BDT_BALDTL_DEFN_DICT=createTableTypeDict('CAIMS_BDT_BALDTL')
     BDT_CRNT1_tbl=collections.OrderedDict()
-    BDT_CRNT1_DEFN_DICT=createTableTypeDict('BDT_CRNT1')  
+    BDT_CRNT1_DEFN_DICT=createTableTypeDict('CAIMS_BDT_CRNT1')  
     BDT_CRNT2_tbl=collections.OrderedDict()
-    BDT_CRNT2_DEFN_DICT=createTableTypeDict('BDT_CRNT2')
+    BDT_CRNT2_DEFN_DICT=createTableTypeDict('CAIMS_BDT_CRNT2')
     BDT_SWSPLCHG_tbl=collections.OrderedDict()
-    BDT_SWSPLCHG_DEFN_DICT=createTableTypeDict('BDT_SWSPLCHG')       
+    BDT_SWSPLCHG_DEFN_DICT=createTableTypeDict('CAIMS_BDT_SWSPLCHG')       
     BDT_PMNTADJ_tbl=collections.OrderedDict()
-    BDT_PMNTADJ_DEFN_DICT=createTableTypeDict('BDT_PMNTADJ')        
+    BDT_PMNTADJ_DEFN_DICT=createTableTypeDict('CAIMS_BDT_PMNTADJ')        
     BDT_ADJMTDTL_tbl=collections.OrderedDict()
-    BDT_ADJMTDTL_DEFN_DICT=createTableTypeDict('BDT_ADJMTDTL')         
+    BDT_ADJMTDTL_DEFN_DICT=createTableTypeDict('CAIMS_BDT_ADJMTDTL')         
          
 
     "COUNTERS"
@@ -381,7 +410,7 @@ def process_TYP0101_ROOT():
     
     "we already know ACNA, EOB_DATE, and BAN are the same"   
     BDT_BCCBBIL_tbl['JDATE']=line[71:76]
-    BDT_BCCBBIL_tbl['BANLOCK']='N'    #defaulted db value
+#    BDT_BCCBBIL_tbl['BANLOCK']='N'    #defaulted db value
     BDT_BCCBBIL_tbl['VERSION_NBR']=line[82:84]
 
     BDT_BCCBBIL_tbl['TLF']=line[97:98]
@@ -399,7 +428,7 @@ def process_TYP0101_ROOT():
     BDT_BCCBBIL_tbl['MPB']=line[224:225]
     BDT_BCCBBIL_tbl['INPUT_RECORDS']=str(record_id)
  
-    process_insert_table("BDT_BCCBBIL", BDT_BCCBBIL_tbl,BDT_BCCBBIL_DEFN_DICT)
+    process_insert_table("CAIMS_BDT_BCCBBIL", BDT_BCCBBIL_tbl,BDT_BCCBBIL_DEFN_DICT)
     
     root_rec=True
  
@@ -422,9 +451,9 @@ def process_TYP0505_BO_CODE():
     
 #    process_update_bccbbil() 
     if root_rec:
-        process_update_table("BDT_BCCBBIL", BDT_BCCBBIL_tbl, BDT_BCCBBIL_DEFN_DICT)
+        process_update_table("CAIMS_BDT_BCCBBIL", BDT_BCCBBIL_tbl, BDT_BCCBBIL_DEFN_DICT)
     else:
-#        process_insert_table("BDT_BCCBBIL", BDT_BCCBBIL_tbl, BDT_BCCBBIL_DEFN_DICT)
+#        process_insert_table("CAIMS_BDT_BCCBBIL", BDT_BCCBBIL_tbl, BDT_BCCBBIL_DEFN_DICT)
          process_ERROR_END("Trying to update BO_CODE but there is no root record. record_id: "+str(record_id))
          
     "no flag to set - part of root"
@@ -462,7 +491,7 @@ def process_TYP0510_BALDUE():
 #    process_update_bccbbil() 
      
     if root_rec:
-        process_update_table("BDT_BCCBBIL", BDT_BCCBBIL_tbl, BDT_BCCBBIL_DEFN_DICT)
+        process_update_table("CAIMS_BDT_BCCBBIL", BDT_BCCBBIL_tbl, BDT_BCCBBIL_DEFN_DICT)
     else:
         process_ERROR_END("BALDUE record needs a root record. Record id:"+str(record_id))  
         
@@ -508,7 +537,7 @@ def process_TYP0512_CRNT1():
     
     BDT_CRNT1_tbl['INPUT_RECORDS']=str(record_id)
 
-    process_insert_table("BDT_CRNT1", BDT_CRNT1_tbl, BDT_CRNT1_DEFN_DICT)
+    process_insert_table("CAIMS_BDT_CRNT1", BDT_CRNT1_tbl, BDT_CRNT1_DEFN_DICT)
                
  
     
@@ -557,7 +586,7 @@ def process_TYP0513_CRNT2():
         BDT_CRNT2_tbl['OCCLO']=line[178:189]
         BDT_CRNT2_tbl['STLVCC2']=line[205:209]
         BDT_CRNT2_tbl['USGLO']=line[209:220]
-        process_insert_table("BDT_CRNT2", BDT_CRNT2_tbl, BDT_CRNT2_DEFN_DICT)
+        process_insert_table("CAIMS_BDT_CRNT2", BDT_CRNT2_tbl, BDT_CRNT2_DEFN_DICT)
     
         crnt2_rec=True    
    
@@ -580,7 +609,7 @@ def process_TYP05131_CRNT2():
     BDT_CRNT2_tbl['INPUT_RECORDS']+="*"+str(record_id)
     
     if prev_record_id == '051300':
-        process_insert_table("BDT_CRNT2", BDT_CRNT2_tbl, BDT_CRNT2_DEFN_DICT)
+        process_insert_table("CAIMS_BDT_CRNT2", BDT_CRNT2_tbl, BDT_CRNT2_DEFN_DICT)
     else:
         process_ERROR_END("ERROR: Previous record should have been a 051300.")
                
@@ -627,7 +656,7 @@ def process_TYP0514_SWSPLCHG():
 
     BDT_SWSPLCHG_tbl['INPUT_RECORDS']=str(record_id)
  
-    process_insert_table("BDT_SWSPLCHG", BDT_SWSPLCHG_tbl, BDT_SWSPLCHG_DEFN_DICT)
+    process_insert_table("CAIMS_BDT_SWSPLCHG", BDT_SWSPLCHG_tbl, BDT_SWSPLCHG_DEFN_DICT)
     
     swsplchg_rec=True
 
@@ -654,7 +683,7 @@ def process_TYP1505_PMNTADJ():
     BDT_PMNTADJ_tbl['INPUT_RECORDS']=str(record_id)
     
 
-    process_insert_table("BDT_PMNTADJ", BDT_PMNTADJ_tbl, BDT_PMNTADJ_DEFN_DICT) 
+    process_insert_table("CAIMS_BDT_PMNTADJ", BDT_PMNTADJ_tbl, BDT_PMNTADJ_DEFN_DICT) 
 
     pmntadj_rec=True
 
@@ -719,7 +748,7 @@ def process_TYP20051_ADJMTDTL():
     BDT_ADJMTDTL_tbl['INPUT_RECORDS']+="*"+str(record_id)
     
     if prev_record_id == '200500':
-        process_insert_table("BDT_ADJMTDTL", BDT_ADJMTDTL_tbl, BDT_ADJMTDTL_DEFN_DICT)
+        process_insert_table("CAIMS_BDT_ADJMTDTL", BDT_ADJMTDTL_tbl, BDT_ADJMTDTL_DEFN_DICT)
     else:
         process_ERROR_END("ERROR: previous record should have been a 200500.")
                
@@ -746,7 +775,7 @@ def process_TYP2505_BALDTL():
     BDT_BALDTL_tbl['INPUT_RECORDS']=str(record_id)
     
     if baldue_rec:
-        process_insert_table("BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT) 
+        process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT) 
     else:
         writelog("WARNING: The BALDTL record "+str(record_id)+" has no associated BALDUE record.")
     

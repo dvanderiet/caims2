@@ -1,11 +1,39 @@
 # -*- coding: utf-8 -*-
-"""
-Spyder Editor    
-
-This is a temporary script file.
-"""
 #!/usr/bin/python
-#CSR python program
+"""
+PROGRAM NAME:     etl_caims_cabs_csr.py                                  
+LOCATION:                      
+PROGRAMMER(S):    Dan VandeRiet                                 
+DESCRIPTION:      CAIMS Extract/Transformation/Load program for CSR records.
+                  
+REPLACES:         Legacy CTL program xxxxxxxxx - LOAD xxxxxxxxxx FOCUS DATABASE.
+                                                                         
+LANGUAGE/VERSION: Python/2.7.10                                          
+INITIATION DATE:  x/x/2016                                                
+INPUT FILE(S):    xxxxxxxxxxxxxxxxxxxxxxxxxxx (build from GDG)
+LOCATION:         MARION MAINFRAME           
+                                                                         
+OUTPUT:           ORACLE DWBS001P                                
+                  Table names CAIMS_CSR_*
+                                                                         
+EXTERNAL CALLS:                                         
+                                                                         
+LOCATION:         pansco-pdm: /opt/IntrNet/p271app/rpt271/macros         
+                                                                         
+Copyright 2016, CenturyLink All Rights Reserved. Unpublished and          
+Confidential Property of CenturyLink.                                          
+                                                                         
+CONFIDENTIAL: Disclose and distribute solely to CenturyLink employees
+having a need to know.
+=========================================================================
+                 R E V I S I O N      H I S T O R Y                      
+=========================================================================
+PROGRAMMER:                                   DATE:        
+VALIDATOR:                                    DATE:                      
+REASON:  
+
+"""
+
 import datetime
 import inspect
 #import collections
@@ -171,15 +199,15 @@ def main():
     
 #DECLARE TABLE ARRAYS AND DICTIONARIES
     CSR_BCCBSPL_tbl=collections.OrderedDict() 
-    CSR_BCCBSPL_DEFN_DICT=createTableTypeDict('CSR_BCCBSPL')     
+    CSR_BCCBSPL_DEFN_DICT=createTableTypeDict('CAIMS_CSR_BCCBSPL')     
     CSR_BILLREC_tbl=collections.OrderedDict()
-    CSR_BILLREC_DEFN_DICT=createTableTypeDict('CSR_BILLREC')
+    CSR_BILLREC_DEFN_DICT=createTableTypeDict('CAIMS_CSR_BILLREC')
     CSR_ACTLREC_tbl=collections.OrderedDict()
-    CSR_ACTLREC_DEFN_DICT=createTableTypeDict('CSR_ACTLREC')
+    CSR_ACTLREC_DEFN_DICT=createTableTypeDict('CAIMS_CSR_ACTLREC')
     CSR_CKTSEG_tbl=collections.OrderedDict()
-    CSR_CKTSEG_DEFN_DICT=createTableTypeDict('CSR_CKTSEG')    
+    CSR_CKTSEG_DEFN_DICT=createTableTypeDict('CAIMS_CSR_CKTSEG')    
     CSR_LOCSEG_tbl=collections.OrderedDict()
-    CSR_LOCSEG_DEFN_DICT=createTableTypeDict('CSR_LOCSEG')    
+    CSR_LOCSEG_DEFN_DICT=createTableTypeDict('CAIMS_CSR_LOCSEG')    
  
  
  
@@ -377,7 +405,7 @@ def process_ROOTREC_TYP0505():
 
     "we already know ACNA, EOB_DATE, and BAN are the same"   
 
-    process_insert_table("CSR_BCCBSPL", CSR_BCCBSPL_tbl, CSR_BCCBSPL_DEFN_DICT)
+    process_insert_table("CAIMS_CSR_BCCBSPL", CSR_BCCBSPL_tbl, CSR_BCCBSPL_DEFN_DICT)
     root_rec=True
          
     "no flag to set - part of root"
@@ -408,7 +436,7 @@ def process_ROOTREC_CHEKFID():
         if CSR_BCCBSPL_tbl['MCN'].rstrip(' ') == '' and CSR_BCCBSPL_tbl['CCNA'].rstrip(' ') == '':
             pass   #values are blank nothing to update
         else:
-            process_update_table("CSR_BCCBSPL", CSR_BCCBSPL_tbl, CSR_BCCBSPL_DEFN_DICT)
+            process_update_table("CAIMS_CSR_BCCBSPL", CSR_BCCBSPL_tbl, CSR_BCCBSPL_DEFN_DICT)
     else:
         process_ERROR_END("ERROR: No root record for CHEKFID record "+str(record_id)+".  Not updating MCN or CCNA.")
         
@@ -427,7 +455,7 @@ def process_BILLREC_BILLTO():
     CSR_BILLREC_tbl['BADDR4']=line[193:225]
     CSR_BILLREC_tbl['INPUT_RECORDS']=str(record_id)
     
-    process_insert_table("CSR_BILLREC", CSR_BILLREC_tbl, CSR_BILLREC_DEFN_DICT)
+    process_insert_table("CAIMS_CSR_BILLREC", CSR_BILLREC_tbl, CSR_BILLREC_DEFN_DICT)
 
 def process_ACTLREC_BILLTO(): 
     debug("****** procedure==>  "+whereami()+" ******")
@@ -447,7 +475,7 @@ def process_ACTLREC_BILLTO():
     CSR_ACTLREC_tbl['FGRP']=line[217:218]
     CSR_ACTLREC_tbl['INPUT_RECORDS']=str(record_id)
     
-    process_insert_table("CSR_ACTLREC", CSR_ACTLREC_tbl, CSR_ACTLREC_DEFN_DICT)
+    process_insert_table("CAIMS_CSR_ACTLREC", CSR_ACTLREC_tbl, CSR_ACTLREC_DEFN_DICT)
     
 def process_ROOTREC_UPROOT():
     debug("****** procedure==>  "+whereami()+" ******")
@@ -459,7 +487,7 @@ def process_ROOTREC_UPROOT():
     if root_rec==True:
         CSR_BCCBSPL_tbl['TAPE']=line[61:65]
         CSR_BCCBSPL_tbl['INPUT_RECORDS']+="*"+str(record_id)
-        process_update_table("CSR_BCCBSPL", CSR_BCCBSPL_tbl, CSR_BCCBSPL_DEFN_DICT)
+        process_update_table("CAIMS_CSR_BCCBSPL", CSR_BCCBSPL_tbl, CSR_BCCBSPL_DEFN_DICT)
  
     else:
         process_ERROR_END("ERROR: Encountered UPROOT record (record id "+record_id+") but no root record has been created.")
@@ -501,7 +529,7 @@ def process_TYP1505_CKT_LOC():
             CSR_CKTSEG_tbl['CACT']=line[224:225]
             CSR_CKTSEG_tbl['INPUT_RECORDS']=str(record_id)
                 
-            process_insert_table("CSR_CKTSEG", CSR_CKTSEG_tbl, CSR_CKTSEG_DEFN_DICT)
+            process_insert_table("CAIMS_CSR_CKTSEG", CSR_CKTSEG_tbl, CSR_CKTSEG_DEFN_DICT)
             
         elif tfid in ('CKL','CKLT'):
             #LOCSEG stuff
@@ -553,7 +581,7 @@ def process_TYP1505_CKT_LOC():
                 
             CSR_LOCSEG_tbl['INPUT_RECORDS']=str(record_id)
             
-            process_insert_table("CSR_LOCSEG", CSR_LOCSEG_tbl, CSR_LOCSEG_DEFN_DICT)
+            process_insert_table("CAIMS_CSR_LOCSEG", CSR_LOCSEG_tbl, CSR_LOCSEG_DEFN_DICT)
       
 #
 #INITIALIZATION PARAGRAPHS
