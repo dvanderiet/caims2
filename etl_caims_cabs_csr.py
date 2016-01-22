@@ -163,7 +163,7 @@ def main():
     global CSR_BCCBSPL_tbl,  CSR_BCCBSPL_DEFN_DICT
     global CSR_BILLREC_tbl, CSR_BILLREC_DEFN_DICT
     global CSR_ACTLREC_tbl, CSR_ACTLREC_DEFN_DICT
-    global CSR_CKTSEG_tbl, CSR_CKTSEG_DEFN_DICT
+    global CSR_CKTREC_tbl, CSR_CKTREC_DEFN_DICT
     global CSR_LOCSEG_tbl, CSR_LOCSEG_DEFN_DICT
  
  
@@ -204,8 +204,8 @@ def main():
     CSR_BILLREC_DEFN_DICT=createTableTypeDict('CAIMS_CSR_BILLREC')
     CSR_ACTLREC_tbl=collections.OrderedDict()
     CSR_ACTLREC_DEFN_DICT=createTableTypeDict('CAIMS_CSR_ACTLREC')
-    CSR_CKTSEG_tbl=collections.OrderedDict()
-    CSR_CKTSEG_DEFN_DICT=createTableTypeDict('CAIMS_CSR_CKTSEG')    
+    CSR_CKTREC_tbl=collections.OrderedDict()
+    CSR_CKTREC_DEFN_DICT=createTableTypeDict('CAIMS_CSR_CKTREC')    
     CSR_LOCSEG_tbl=collections.OrderedDict()
     CSR_LOCSEG_DEFN_DICT=createTableTypeDict('CAIMS_CSR_LOCSEG')    
  
@@ -285,6 +285,7 @@ def main():
 def log_footer_rec_info(): 
     debug("****** procedure==>  "+whereami()+" ******")
     global record_id
+    global Level
     
     BAN_cnt=line[6:12]
     REC_cnt=line[13:22]
@@ -303,10 +304,8 @@ def process_csr_records():
     global CSR_BCCBSPL_tbl
     global record_id
     global tstx, verno, tsty
-#   record_id=line[225:231] 
-    dtst=line[224:225]
-        
       
+    dtst=line[224:225]  
     unknownRecord=False
     if record_id == '010100':
         process_TYP0101_HEADREC()
@@ -320,10 +319,17 @@ def process_csr_records():
         process_ACTLREC_BILLTO() 
     elif record_id == '101500':       #udpate root record
         process_ROOTREC_UPROOT() 
-    elif record_id == '150500' and dtst !='D':     
-        process_TYP1505_CKT_LOC()      #insert root record
-
-
+    elif record_id == '150500' and dtst !='D':           #       check dtst 
+        process_TYP1505_CKT_LOC()       
+    elif record_id in ('150600','151001') and dtst !='D':#       check dtst 
+        process_FIDDRVR()     
+    elif record_id == '151000' and dtst !='D':           #       check dtst 
+        process_USOCDRVR_36()
+    elif record_id == '151600' and dtst !='D':           #       check dtst 
+        process_USOCDRVR_TAX()    
+    elif record_id == '151700' and dtst !='D':           #       check dtst 
+        process_USOCDRVR_PLN()  
+        
         
     else:  #UNKNOWN RECORDS
         unknownRecord=True
@@ -485,9 +491,12 @@ def process_ROOTREC_UPROOT():
     initialize_BCCBSPL_tbl()
     
     if root_rec==True:
-        CSR_BCCBSPL_tbl['TAPE']=line[61:65]
-        CSR_BCCBSPL_tbl['INPUT_RECORDS']+="*"+str(record_id)
-        process_update_table("CAIMS_CSR_BCCBSPL", CSR_BCCBSPL_tbl, CSR_BCCBSPL_DEFN_DICT)
+        if line[61:62].rstrip('') != '':
+            CSR_BCCBSPL_tbl['TAPE']=line[61:62]
+            CSR_BCCBSPL_tbl['INPUT_RECORDS']+="*"+str(record_id)
+            process_update_table("CAIMS_CSR_BCCBSPL", CSR_BCCBSPL_tbl, CSR_BCCBSPL_DEFN_DICT)
+        else:
+            writelog("No TAPE value on input data for ACNA="+current_abbd_rec_key['ACNA']+", BAN="+current_abbd_rec_key['BAN']+", EOB_DATE="+current_abbd_rec_key['EOB_DATE'])
  
     else:
         process_ERROR_END("ERROR: Encountered UPROOT record (record id "+record_id+") but no root record has been created.")
@@ -495,8 +504,9 @@ def process_ROOTREC_UPROOT():
 
 
 def process_TYP1505_CKT_LOC():    
-    global CSR_CKTSEG_tbl
+    global CSR_CKTREC_tbl
     global CSR_LOCSEG_tbl
+    global Level
     "150500"
     
     tfid=line[72:76].rstrip(' ')
@@ -511,53 +521,53 @@ def process_TYP1505_CKT_LOC():
                             '/SFG','/CKR','/GSZ','/NHN','/PTN','/SBN','/LSO','/FSO',  
                             '/NCI','/ICO','/SGN','/DES','/HSO','/CFA','/XR','/SN','/LSOC')):  
         pass   #SKIP record
-    else: #CREATE CKTSEG
-        if tfid in ('CLS','CLF','CLT','CLM'):  #val=1
-        
-            initialize_CSR_CKTSEG_tbl()
-#FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X31
+    else: #CREATE CKTREC
+        if tfid in ('CLS','CLF','CLT','CLM'):
+            #build CKTREC segment
+            initialize_CKTREC_tbl()
+##FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X31
 #FIXFORM CDINSTCC/8 X3 FID/A4 X1 PSM/16 X-16 CIRCUIT/A53 X67
 #FIXFORM X1 CKT_LTP/A4 X1 CKT_MAN_BAN_UNITS/Z7.4 X6
 #FIXFORM CDACTCC/8 CACT/A1
-            CSR_CKTSEG_tbl['CDINSTCC']=line[61:69]
-            CSR_CKTSEG_tbl['FID']=line[72:76]
-            CSR_CKTSEG_tbl['PSM']=line[77:93]
-            CSR_CKTSEG_tbl['CIRCUIT']=line[77:130]
-            CSR_CKTSEG_tbl['CKT_LTP']=line[198:202]
-            CSR_CKTSEG_tbl['CKT_MAN_BAN_UNITS']=line[203:210]
-            CSR_CKTSEG_tbl['CDACTCC']=line[216:224]
-            CSR_CKTSEG_tbl['CACT']=line[224:225]
-            CSR_CKTSEG_tbl['INPUT_RECORDS']=str(record_id)
+            Level = 'C'
+            CSR_CKTREC_tbl['CDINSTCC']=line[61:69]
+            CSR_CKTREC_tbl['FID']=line[72:76]
+            CSR_CKTREC_tbl['PSM']=line[77:93]
+            CSR_CKTREC_tbl['CIRCUIT']=line[77:130]
+            CSR_CKTREC_tbl['CKT_LTP']=line[198:202]
+            CSR_CKTREC_tbl['CKT_MAN_BAN_UNITS']=line[203:210]
+            CSR_CKTREC_tbl['CDACTCC']=line[216:224]
+            CSR_CKTREC_tbl['CACT']=line[224:225]
+            CSR_CKTREC_tbl['INPUT_RECORDS']=str(record_id)
                 
-            process_insert_table("CAIMS_CSR_CKTSEG", CSR_CKTSEG_tbl, CSR_CKTSEG_DEFN_DICT)
+            process_insert_table("CAIMS_CSR_CKTREC", CSR_CKTREC_tbl, CSR_CKTREC_DEFN_DICT)
+
             
-        elif tfid in ('CKL','CKLT'):
-            #LOCSEG stuff
-            initialize_CSR_LOCSEG_tbl() 
+        elif tfid in  ('CKL','CKLT'):
+            #build LOCSEG setment
+            initialize_LOCSEG_tbl()
+            Level = 'L'
 #FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X31
 #FIXFORM LDINSTCC/8 X3 CKLFID/A4 X1 LOC_DATA/A60 X60
 #FIXFORM X1 LOC_LTP/A4 X1 LOC_MAN_BAN_UNITS/Z7.4 X6
 #FIXFORM LDACTCC/8 LACT/A1
 #COMPUTE
 #USOCCNT/I2=0;
+#below:It would ignore the first two characters and get the 3rd and 4th.
 #TLOC = EDIT(LOC_DATA,'$$99$');
-#LOC = IF TLOC EQ '1-' THEN '1  ' ELSE
-#      IF TLOC EQ '2-' THEN '2  ' ELSE
-#      IF TLOC EQ '3-' THEN '3  ' ELSE
-#      IF TLOC EQ '4-' THEN '4  ' ELSE
-#      IF TLOC EQ '5-' THEN '5  ' ELSE
-#      IF TLOC EQ '6-' THEN '6  ' ELSE
-#      IF TLOC EQ '7-' THEN '7  ' ELSE
-#      IF TLOC EQ '8-' THEN '8  ' ELSE
-#      IF TLOC EQ '9-' THEN '9  ' ELSE TLOC;
+
+
+      
             CSR_LOCSEG_tbl['LDINSTCC']=line[61:69]
             CSR_LOCSEG_tbl['CKLFID']=line[72:76]
             CSR_LOCSEG_tbl['LOC_DATA']=line[77:137]
+            CSR_LOCSEG_tbl['TLOC']=line[79:81]
             CSR_LOCSEG_tbl['LOC_LTP']=line[198:202]
             CSR_LOCSEG_tbl['LOC_MAN_BAN_UNITS']=line[203:210]
             CSR_LOCSEG_tbl['LDACTCC']=line[216:224]
             CSR_LOCSEG_tbl['LACT']=line[224:225]
-            CSR_LOCSEG_tbl['TLOC']=line[79:81]
+            CSR_LOCSEG_tbl['USOCCNT']=0
+            
             if CSR_LOCSEG_tbl['TLOC'] == '1-':
                 CSR_LOCSEG_tbl['LOC'] ='1'
             elif CSR_LOCSEG_tbl['TLOC'] == '2-':
@@ -581,16 +591,765 @@ def process_TYP1505_CKT_LOC():
                 
             CSR_LOCSEG_tbl['INPUT_RECORDS']=str(record_id)
             
-            process_insert_table("CAIMS_CSR_LOCSEG", CSR_LOCSEG_tbl, CSR_LOCSEG_DEFN_DICT)
-      
-#
-#INITIALIZATION PARAGRAPHS
-#INITIALIZATION PARAGRAPHS
-#INITIALIZATION PARAGRAPHS
-#INITIALIZATION PARAGRAPHS
-#INITIALIZATION PARAGRAPHS
-#INITIALIZATION PARAGRAPHS
-#  
+            process_insert_table("CAIMS_CSR_LOCSEG", CSR_LOCSEG_tbl, CSR_LOCSEG_DEFN_DICT)            
+        else:
+            pass #SKIP record
+            
+       
+def process_FIDDRVR():
+    debug("****** procedure==>  "+whereami()+" ******")    
+    "150600, 151001 records"
+    global Level
+    #
+#    global CSR_CKTREC_tbl
+#    global CSR_LOCSEG_tbl
+    "150600, 151001"
+#FIXFORM X-159 TFID/4 X121 X6 X21 ACTVY_IND/1    
+    
+    tfid=line[72:76] 
+    actvy_ind=line[224:225]
+    
+    #ACTVY_IND=line[224:225]
+    if actvy_ind == 'D':
+        pass
+    elif (Level == 'F' AND tfid.rstrip(' ') == 'ASG' )
+        or (Level == 'LU' AND tfid.rstrip(' ') == 'ASG')
+        or (Level == 'CU' AND tfid.rstrip(' ') == 'ASG')
+        or (Level == 'CO' AND tfid.rstrip(' ') == 'ASG')
+        or (Level == 'L' AND tfid.rstrip(' ') == 'ASG'):
+            pass
+        else:
+            if Level == 'C':
+#                GOTO CKTFIDRVR 
+                 if tfid == 'NC  ': 
+#                     GOTO CKTNCUP (LOADS THE NCODE FIELD IN THE CKTSEG OF THE DATABASE)
+                      #CIRCUIT = CIRCUIT;?????
+                     #FIXFORM X-225 X5 X6 X13 X42 X4 X1 NCODE/4
+                     #MATCH CIRCUIT? update ncode
+                     ncode=line[77:81]
+                 elif tfid == 'PIU ': 
+#                    GOTO CKTPIUUP (LOADS THE PIU FIELD IN THE CKTSEG OF THE DATABASE)
+#                    CIRCUIT = CIRCUIT;
+#                    FIXFORM X-225 X5 X6 X13 X42 X4 X1 PIU/3
+                     #MATCH CIRCUIT? update piu
+                     piu=line[77:80]
+                 elif tfid == 'ASG ': 
+#                     GOTO CKTASGUP (LOADS THE ASG FIELD IN THE CKTSEG OF THE DATABASE)
+#                     CIRCUIT = CIRCUIT;
+#                     FIXFORM X-225 X5 X6 X13 X42 X4 X1 ASG/6
+                      #MATCH CIRCUIT? update asg
+                     asg=line[77:83]
+                 elif tfid == 'LCC ': 
+#                     GOTO CKTLCCUP (LOADS THE LCC FIELD IN THE CKTSEG OF THE DATABASE)
+#                     CIRCUIT = CIRCUIT;
+#                     FIXFORM X-225 X5 X6 X13 X42 X4 X1 LCC/3
+#                     #MATCH CIRCUIT? update lcc
+                     lcc=line[77:80]
+                 elif tfid == 'BAND': 
+#                     GOTO CKTBNDUP (LOADS THE BAND FIELD IN THECKTSEG OF THE DATABASE)
+#                    CIRCUIT = CIRCUIT;
+#                     FIXFORM X-225 X5 X6 X13 X42 X4 X1 BAND/1
+                     #MATCH CIRCUIT? update band
+                     lcc=line[77:78]
+                 elif tfid == 'TAR ': 
+#                    GOTO CKTTARUP (LOADS THE TAR FIELD IN THE CKTSEG OF THE DATABASE)
+#                    CIRCUIT = CIRCUIT;
+#                    FIXFORM X-225 X5 X6 X13 X42 X4 X1 TAR/4
+                     #MATCH CIRCUIT? update TAR
+                     tar=line[77:81]
+                 elif tfid == 'RTAR': 
+#                     GOTO CKTRTARUP (CRTAR  FIELD IN THE CKTSEG OF THE DATABASE)
+#                     CIRCUIT = CIRCUIT;
+#                     FIXFORM X-225 X5 X6 X13 X42 X4 X1 RTAR/4
+                     #MATCH CIRCUIT? update RTAR
+                     rtar=line[77:81]
+                 elif tfid == 'LLN ': 
+#                     GOTO CKTLLNUP (LOADS THE LLN FIELD IN THE CKTSEG OF THE DATABASE)
+#                     CIRCUIT = CIRCUIT;
+#                     FIXFORM X-225 X5 X6 X13 X42 X4 X1 LLN/12
+                     #MATCH CIRCUIT? update LLN
+                     lln=line[77:89]
+                 elif tfid == 'TLI ': 
+#                     GOTO CKTTLIUP (LOADS THE TLI FIELD IN THE CKTSEG OF THE DATABASE)
+#                     CIRCUIT = CIRCUIT;
+#                     FIXFORM X-225 X5 X6 X13 X42 X4 X1 TLI/12
+                     #MATCH CIRCUIT? update tli
+                     tli=line[77:89]
+                 elif tfid == 'PICX': 
+#                     GOTO CKTPICXUP (LOADS THE PICX FIELD IN THE CKTSEG OF THE DATABASE)
+#                     CIRCUIT = CIRCUIT;
+#                     FIXFORM X-225 X5 X6 X13 X42 X4 X1 PICX/3
+                     #MATCH CIRCUIT? update picx
+                     picx=line[77:80]
+                 elif tfid == 'HML ': 
+#                     GOTO CKTHMLUP (LOADS THE HML FIELD IN THE CKTSEG OF THE DATABASE)
+#                     CIRCUIT = CIRCUIT;
+#                     FIXFORM X-225 X5 X6 X13 X42 X4 X1 HML/40
+                      #MATCH CIRCUIT? update hml
+                     hml=line[77:117]
+                 elif tfid == 'HTG ': 
+#                     GOTO CKTHTGUP (LOADS THE HTG FIELD IN THE CKTSEG OF THE DATABASE)
+#                     CIRCUIT = CIRCUIT;
+#                     FIXFORM X-225 X5 X6 X13 X42 X4 X1 HTG/40
+                      #MATCH CIRCUIT? update htg
+                     htg=line[77:117]
+                 elif tfid == 'TN  ': 
+#                     GOTO CKTTNUP (LOADS THE TN FIELD IN THE CKTSEG OF THE DATABASE)
+#                     CIRCUIT = CIRCUIT;
+#                     FIXFORM X-225 X5 X6 X13 X42 X4 X1 TN/12
+                      #MATCH CIRCUIT? update tn
+                     htg=line[77:89]
+                 elif tfid == 'TER ': 
+#                     GOTO CKTTERUP (LOADS THE TER FIELD IN THE CKTSEG OF THE DATABASE)
+#                     CIRCUIT = CIRCUIT;
+#                     FIXFORM X-225 X5 X6 X13 X42 X4 X1 TER/4
+                      #MATCH CIRCUIT? update ter
+                     ter=line[77:81]
+                 elif tfid == 'STN ': 
+#                     GOTO CKTSTNUP (LOADS THE STN FIELD IN THE CKTSEG OF THE DATABASE)
+#                     CIRCUIT = CIRCUIT;
+#                     FIXFORM X-225 X5 X6 X13 X42 X4 X1 STN/24
+                      #MATCH CIRCUIT? update stn
+                     stn=line[77:91]
+                 elif tfid == 'SFN ': 
+#                     GOTO CKTSFNUP (LOADS THE SFN FIELD IN THE CKTSEG OF THE DATABASE)
+#                     CIRCUIT = CIRCUIT;
+#                     FIXFORM X-225 X5 X6 X13 X42 X4 X1 SFN/4
+                      #MATCH CIRCUIT? update sfn
+                     sfn=line[77:81]    
+                 elif tfid == 'SFG ': 
+#                     GOTO CKTSFGUP (LOADS THE SFG FIELD IN THE CKTSEG OF THE DATABASE)
+#                     CIRCUIT = CIRCUIT;
+#                     FIXFORM X-225 X5 X6 X13 X42 X4 X1 SFG/6
+                      #MATCH CIRCUIT? update sfg
+                     sfg=line[77:83] 
+                 elif tfid == 'CKR ': 
+#                     GOTO CKTCKRUP (LOADS THE CKR FIELD IN THE CKTSEG OF THE DATABASE)
+#                     CIRCUIT = CIRCUIT;
+#                    FIXFORM X-225 X5 X6 X13 X42 X4 X1 CKR/36
+                     #MATCH CIRCUIT? update CKR
+                     ckr=line[77:113]
+                 else:
+#                     GOTO CKTFIDRVR1
+                     if tfid == 'GSZ ': 
+                         GOTO CKTGSZUP ELSE
+                     elif tfid == 'NHN ': 
+                         GOTO CKTNHNUP ELSE
+                     elif tfid == 'PTN ': 
+                         GOTO CKTPTNUP ELSE
+                     elif tfid = 'SBN ': 
+                         GOTO CKTSBNUP 
+                     else:
+                         GOTO CKTFID;
+
+
+            elif Level == 'CU':
+                #GOTO CUSOCFID COSFID SEGEMENT
+                #FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X42
+                #FIXFORM CUFID/A4 X1 CUFID_DATA/36 X85
+                #FIXFORM FGRP/1 X26
+                 CUFID=line[72:76]
+                 CUFID_DATA=line[77:113]
+                 FGRP=line[198:199]
+
+            elif Level == 'CO':
+                #GOTO COSFID sEGMENT
+#                FIXFORM X-225 X5 X6 X13 X42
+#                FIXFORM COSFID/A4 X1 COSFID_DATA/36 X85
+#                FIXFORM X1 X26
+                 COSFID=line[72:76]
+                 COSFID_DATA=line[77:113]
+            elif Level == 'L':
+#                GOTO LOCFIDRVR 
+                 if TFID EQ 'LSO ': 
+#                     GOTO LOCLSOUP (UPDATE THE LSO FIELD IN THE LOC SEGMENT )
+#                     LOC = LOC;
+#                     FIXFORM X-225 X5 X6 X13 X42 X4 X1 LSO/7
+                      #MATCH LOC? update lso
+                     lso=line[77:84]
+                 elif TFID EQ 'FSO ': 
+#                     GOTO LOCFSOUP (UPDATE THE FSO FIELD IN THE LOC SEGMENT )
+#                     LOC = LOC;
+#                     FIXFORM X-225 X5 X6 X13 X42 X4 X1 FSO/7
+                      #MATCH LOC? update fso
+                     fso=line[77:84]
+                 elif TFID EQ 'NCI ': 
+#                     GOTO LOCNCIUP (UPDATE THE NCI FIELD IN THE LOC SEGMENT )
+#                     LOC = LOC;
+#                     FIXFORM X-225 X5 X6 X13 X42 X4 X1 NCI/13
+                      #MATCH LOC? update nci
+                     nci=line[77:90]
+                 elif TFID EQ 'NC  ': 
+#                     GOTO LOCLNCUP (UPDATE THE LNCODE FIELD IN THE LOC SEGMENT )
+#                     LOC = LOC;
+#                     FIXFORM X-225 X5 X6 X13 X42 X4 X1 LNCODE/4
+                      #MATCH LOC? update lncode
+                     lncode=line[77:81]
+                 elif TFID EQ 'ICO ': 
+                     GOTO LOCICOUP (UPDATE THE ICO FIELD IN THE LOC SEGMENT )
+                     LOC = LOC;
+                     FIXFORM X-225 X5 X6 X13 X42 X4 X1 ICO/4
+                      #MATCH LOC? update ico
+                     ico=line[77:81]
+                 elif TFID EQ 'SGN ': 
+#                     GOTO LOCSGNUP (UPDATE THE SGN FIELD IN THE LOC SEGMENT )
+#                     LOC = LOC;
+#                     FIXFORM X-225 X5 X6 X13 X42 X4 X1 SGN/3
+                     #MATCH LOC? update sgn
+                     sgn=line[77:80]
+                 elif TFID EQ 'TAR ': 
+#                     GOTO LOCTARUP  (UPDATE THE LTAR FIELD IN THE LOC SEGMENT )
+#                     LOC = LOC;
+#                     FIXFORM X-225 X5 X6 X13 X42 X4 X1 LTAR/4
+                     #MATCH LOC? update ltar
+                     ltar=line[77:81]
+                 elif TFID EQ 'RTAR': 
+#                     GOTO LOCRTARUP (UPDATE THE LRTAR FIELD IN THE LOC SEGMENT )
+#                     LOC = LOC;
+#                     FIXFORM X-225 X5 X6 X13 X42 X4 X1 LRTAR/4
+                     #MATCH LOC? update lrtar
+                     lrtar=line[77:81] 
+                 elif TFID EQ 'DES ': 
+#                     GOTO LOCLDESUP (UPDATE THE LDES  FIELD IN THE LOC SEGMENT )
+#                     LOC = LOC;
+#                     FIXFORM X-225 X5 X6 X13 X42 X4 X1 LDES/36
+                     #MATCH LOC? update ldes
+                     ldes=line[77:113] 
+                 elif TFID EQ 'HSO ': 
+#                     GOTO LOCHSOUP  (UPDATE THE HSO FIELD IN THE LOC SEGMENT )
+#                     LOC = LOC;
+#                     FIXFORM X-225 X5 X6 X13 X42 X4 X1 HSO/7
+                     #MATCH LOC? update hso
+                     hso=line[77:84]
+                 elif TFID EQ 'CFA ': 
+#                     GOTO LOCCFAUP  (UPDATE THE CFA FIELD IN THE LOC SEGMENT )
+#                     LOC = LOC;
+#                     FIXFORM X-225 X5 X6 X13 X42 X4 X1 CFA/40
+                     #MATCH LOC? update cfa
+                     cfa=line[77:117]
+                 elif TFID EQ 'XR  ': 
+#                     GOTO LOCXRUP   (UPDATE THE XR  FIELD IN THE LOC SEGMENT )
+#                     LOC = LOC;
+#                     FIXFORM X-225 X5 X6 X13 X42 X4 X1 XR/4
+                     #MATCH LOC? update xr
+                     xr=line[77:81]
+                 elif TFID EQ 'SN  ': 
+#                     GOTO LOCSNUP (UPDATE THE SN  FIELD IN THE LOC SEGMENT ) 
+#                     LOC = LOC;
+#                     FIXFORM X-225 X5 X6 X13 X42 X4 X1 SN/30
+                     #MATCH LOC? update sn
+                     sn=line[77:107]
+                 else:
+#                     GOTO LOCFID
+#                     -* THIS CASE READS THE  FLOATED FID AND LOADS THE CORRESPONDING
+#                     -* FIELD IN THE LFIDSEG SEGMENT OF THE DATABASE.
+#                     -************************************************************
+#                     FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X42
+#                     FIXFORM LOCFID/A4 X1 LF_DATA/A36 X85
+#                     FIXFORM FGRP/1 X26
+                     LOCFID=line[72:76]
+                     LOCFID_DATA=line[77:113]
+                     FGRP=line[198:199]
+            elif Level == 'LU':
+#                GOTO LUSOCFID 
+#                -* THIS CASE READS THE  FLOATED FID AND LOADS THE CORRESPONDING
+#                -* FIELD IN THE UFIDSEG SEGMENT OF THE DATABASE.
+#                -************************************************************
+#                FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X42
+#                FIXFORM UFID/A4 X1 UFID_DATA/A36 X85
+#                FIXFORM FGRP/1 X26
+                
+                UFID=line[72:76]
+                if UFID EQ 'ASG':
+                    pass #go to top
+                else:
+                    UFID_DATA=line[77:113]
+                    FGRP=line[198:199]
+            else:
+                pass #go to top
+
+def process_USOCDRVR_36():
+    debug("****** procedure==>  "+whereami()+" ******")  
+    "151000"
+    global Level
+
+    IF LEVEL EQ 'L' OR 'LU':
+        process_LOCUSOC_36()
+    else:
+#    FIXFORM X-225 X5 X6 X13 X31
+#    FIXFORM X8 X6 X2 TUSOC/5 X121 X6 X7
+#    FIXFORM X8 X1
+        tusoc=line[77:82]
+        if tusoc.rstrip(' ') in ( 'UDP','U3P','U6P'):
+            process_CKTUSOC_36()
+        else:
+            process_COSUSOC_36()
+     
+def process_CKTUSOC_36():    
+    debug("****** procedure==>  "+whereami()+" ******")  
+#    UPDATES THE CKTUSOC SEGMENT
+    global Level
+    
+    if Level in ('L', 'LU'):
+#        GOTO LOCUSOC_36
+    #    -************************************************************
+    #    -*  THIS CASE PROCESSES THE 1510 LOCATION LEVEL USOCS FROM CASE CKTUSOC
+    #    -*   IF LEVEL EQUALS 'L' OR 'LU'
+    #    -************************************************************
+        USOCCNT = USOCCNT + 1;
+        USOC_CNT = USOCCNT;
+        UCODE = '  ';
+        LEVEL = 'LU';
+#        FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X31
+#        FIXFORM UDINSTCC/8 QUSOC/Z5 USOC/5 X137
+#        FIXFORM UDACTCC/8 UACT/A1
+        UDINSTCC=line[61:69]
+        QUSOC==line[69:74]
+        USOC==line[74:79]
+        UDACTCC==line[216:224]
+        UACT==line[224:225]
+               
+        if UACT == 'D':
+            pass #GOTO TOP
+        else:
+            insert values
+    else:      #end LOCUSOC LOGIC
+          
+          
+        Level = 'CU'
+    #    FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X31
+    #    FIXFORM CUDINSTCC/8 CUSOCQTY/Z5 CUSOC/5 X137
+    #    FIXFORM CUDACTCC/8 CUACT/1
+    
+        CUDINSTCC=line[61:69]
+        CUSOCQTY==line[69:74]
+        CUSOC==line[74:79]
+        CUDACTCC==line[216:224]
+        CUACT==line[224:225]
+        
+        if CUACT == 'D':
+            pass #goto top
+        else:
+            insert          
+              
+          
+          
+    else:
+          pass #GOTO TOP
+    
+    
+    
+    
+    
+
+    
+def process_COSUSOC_36():    
+    debug("****** procedure==>  "+whereami()+" ******")  
+    global Level
+    -************************************************************
+    -*  THIS CASE PROCESSES CIRCUIT LEVEL USOC RECORDS 401510. AND
+    -*  UPDATES THE CKTUSOC SEGMENT. SET LEVEL TO 'CO'.
+    -*  CHECK TO SEE IF THIS IS A CIRCUIT LEVEL RECORD OR LOCATION LEVEL
+    -************************************************************
+    if Level in ('L','LU'):
+#        process_LOCUSOC_36()  logic below
+#        -************************************************************
+#        -*  THIS CASE PROCESSES THE 1510 LOCATION LEVEL USOCS FROM CASE CKTUSOC
+#        -*   IF LEVEL EQUALS 'L' OR 'LU'
+#        -************************************************************
+#        COMPUTE
+        USOCCNT = USOCCNT + 1;
+        USOC_CNT = USOCCNT;
+        UCODE = '  ';
+        Level = 'LU';
+#        FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X31
+#        FIXFORM UDINSTCC/8 QUSOC/Z6 USOCRES1/2 USOC/5 X121
+#        FIXFORM USOCRES2/6 X7 UDACTCC/8 UACT/A1
+        UDINSTCC=line[61:69]
+        QUSOC=line[69:75]
+        USOCRES1=line[75:77]
+        USOC=line[77:82]
+        USOCRES2=line[203:209]
+        UDACTCC=line[216:224]
+        UACT=line[224:225]
+        
+        
+        if UACT == 'D':
+            pass  #GOTO TOP;
+        else:
+            insert
+#        MATCH QUSOC USOC USOC_CNT
+#          ON NOMATCH INCLUDE
+#          ON NOMATCH INCLUDE
+#            
+    else:
+        Level = 'CO';
+        CIRCUIT = CIRCUIT;
+#        FIXFORM X-225 X5 X6 X13 X31
+#        FIXFORM COSDINSTCC/8 COSUSOCQTY/Z6 COSRES1/2 COS_USOC/5 X121
+#        FIXFORM COSRES2/6 X7 COSDACTCC/8 COSACT/1
+        COSDINSTCC=line[61:69]
+        COSUSOCQTY=line[69:75]
+        COSRES1=line[75:77]
+        COS_USOC=line[77:82]
+        COSRES2=line[203:209]
+        COSDACTCC=line[216:224]
+        COSACT=line[224:225]
+        
+        if COSACT == 'D':
+            pass #GOTO TOP
+        else:
+            update
+#            MATCH CIRCUIT
+#              ON MATCH UPDATE COSDINSTCC COSUSOCQTY COSRES1
+#              ON MATCH UPDATE COS_USOC COSRES2 COSDACTCC COSACT
+#      
+def process_USOCDRVR_TAX():
+    debug("****** procedure==>  "+whereami()+" ******")
+    "151600"
+    global Level
+    global x_tbl
+    global current_abbd_rec_key 
+    
+#        FIXFORM X-225 X5 X6 X13 X31 X11 TUSOC/5 X121 X9
+#        FIXFORM X3 X2 X4 X1 X8
+    TUSOC=line[72:77]
+    if Level in ('L','LU'):
+#        GOTO LOCUSOC_TAX; logic below
+#        -************************************************************
+#        -*  THIS CASE PROCESSES THE 1516 LOCATION LEVEL USOCS FROM CASE CKTUSOC
+#        -*   IF LEVEL EQUALS 'L' OR 'LU'
+#        -************************************************************
+        
+        USOC_CNT = USOC_CNT;
+        QUSOC = QUSOC;
+        UCODE = '  ';
+        LEVEL = 'LU';
+#        FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X31 X11
+#        FIXFORM USOC/5 X121 USO_FEDTAX/1 USO_STTAX/1 USO_CITYTAX/1
+#        FIXFORM USO_CNTYTAX/1 USO_STSLSTAX/1 USO_LSLSTAX/1 USO_SURTAX/1
+#        FIXFORM USO_FRANTAX/1 USO_OTHERTAX/1 X3 X2 X4 X1 X8
+        
+        USOC=line[72:77]
+        USO_FEDTAX=line[198:199]
+        USO_STTAX=line[199:200]
+        USO_CITYTAX=line[200:201]
+        USO_CNTYTAX=line[201:202]
+        USO_STSLSTAX=line[202:203]
+        USO_LSLSTAX=line[203:204]
+        USO_SURTAX=line[204:205]
+        USO_FRANTAX=line[205:206]
+        USO_OTHERTAX=line[206:207]
+        
+        #Not sure where uact is coming from?????????????????????
+        if UACT EQ 'D':
+            pass   #GOTO TOP
+        else:
+            update record
+#        MATCH QUSOC USOC USOC_CNT
+#          ON NOMATCH REJECT
+#          ON MATCH UPDATE USO_FEDTAX USO_STTAX USO_CITYTAX
+#          ON MATCH UPDATE USO_CNTYTAX USO_STSLSTAX USO_LSLSTAX
+#          ON MATCH UPDATE USO_SURTAX USO_FRANTAX USO_OTHERTAX
+#          ON MATCH DEACTIVATE USO_FEDTAX USO_STTAX USO_CITYTAX
+#          ON MATCH DEACTIVATE USO_CNTYTAX USO_STSLSTAX USO_LSLSTAX
+#          ON MATCH DEACTIVATE USO_SURTAX USO_FRANTAX USO_OTHERTAX
+   
+    elif TUSOC.rstrip(' ') in ('UDP','U3P','U6P'):
+#        GOTO CKTUSOC_TAX  logic below
+        -************************************************************
+        -*  THIS CASE PROCESSES CIRCUIT LEVEL USOC RECORDS 401516. AND
+        -*  UPDATES THE CKTUSOC SEGMENT. SET LEVEL TO 'CU'.
+        -*  CHECK TO SEE IF THIS IS A CIRCUIT LEVEL RECORD OR LOCATION LEVEL
+        -************************************************************
+        LEVEL = 'CU';
+        CUACT = CUACT;
+        CUSOCQTY = CUSOCQTY;
+        
+#        FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X31 X11
+#        FIXFORM CUSOC/5 X121 CU_FEDTAX/1 CU_STTAX/1 CU_CITYTAX/1
+#        FIXFORM CU_CNTYTAX/1 CU_STSLSTAX/1 CU_LSLSTAX/1 CU_SURTAX/1
+#        FIXFORM CU_FRANTAX/1 CU_OTHERTAX/1 X3 X2 X4 X1 X8
+           
+        CUSOC=line[72:77]
+        CU_FEDTAX=line[198:199]
+        CU_STTAX=line[199:200]
+        CU_CITYTAX=line[200:201]
+        CU_CNTYTAX=line[201:202]
+        CU_STSLSTAX=line[202:203]
+        CU_LSLSTAX=line[203:204]
+        CU_SURTAX=line[204:205]
+        CU_FRANTAX=line[205:206]
+        CU_OTHERTAX=line[206:207]
+        
+        if CUACT == 'D':
+            pass #GOTO TOP;
+        else:
+            update record
+#        MATCH CUSOC CUSOCQTY
+#          ON NOMATCH REJECT
+#          ON MATCH UPDATE CU_FEDTAX CU_STTAX CU_CITYTAX
+#          ON MATCH UPDATE CU_CNTYTAX CU_STSLSTAX CU_LSLSTAX
+#          ON MATCH UPDATE CU_SURTAX CU_FRANTAX CU_OTHERTAX
+#          ON MATCH DEACTIVATE CU_FEDTAX CU_STTAX CU_CITYTAX
+#          ON MATCH DEACTIVATE CU_CNTYTAX CU_STSLSTAX CU_LSLSTAX
+#          ON MATCH DEACTIVATE CU_SURTAX CU_FRANTAX CU_OTHERTAX
+    
+    else:
+#        GOTO COSUSOC_TAX   logic below
+        -************************************************************
+        -*  THIS CASE PROCESSES CIRCUIT LEVEL USOC RECORDS 401516. AND
+        -*  UPDATES THE CKTUSOC SEGMENT. SET LEVEL TO 'CO'.
+        -*  CHECK TO SEE IF THIS IS A CIRCUIT LEVEL RECORD OR LOCATION LEVEL
+        -************************************************************
+
+        LEVEL = 'CO';
+        CIRCUIT = CIRCUIT;
+        COSACT = COSACT;
+#        FIXFORM X-225 X5 X6 X13 X31 X11
+#        FIXFORM COS_USOC/5 X121 COS_FEDTAX/1 COS_STTAX/1 COS_CITYTAX/1
+#        FIXFORM COS_CNTYTAX/1 COS_STSLSTAX/1 COS_LSLSTAX/1 COS_SURTAX/1
+#        FIXFORM COS_FRANTAX/1 COS_OTHERTAX/1 X3 X2 X4 X1 X8
+        
+        COS_USOC=line[72:77]
+        COS_FEDTAX=line[198:199]
+        COS_STTAX=line[199:200]
+        COS_CITYTAX=line[200:201]
+        COS_CNTYTAX=line[201:202]
+        COS_STSLSTAX=line[202:203]
+        COS_LSLSTAX=line[203:204]
+        COS_SURTAX=line[204:205]
+        COS_FRANTAX=line[205:206]
+        COS_OTHERTAX=line[206:207]        
+        
+        if COSACT == 'D':
+            pass  #GOTO TOP;
+        else:
+            update record
+#        MATCH CIRCUIT
+#          ON NOMATCH REJECT
+#          ON MATCH UPDATE COS_FEDTAX COS_STTAX COS_CITYTAX
+#          ON MATCH UPDATE COS_CNTYTAX COS_STSLSTAX COS_LSLSTAX
+#          ON MATCH UPDATE COS_SURTAX COS_FRANTAX COS_OTHERTAX
+#          ON MATCH DEACTIVATE COS_FEDTAX COS_STTAX COS_CITYTAX
+#          ON MATCH DEACTIVATE COS_CNTYTAX COS_STSLSTAX COS_LSLSTAX
+#          ON MATCH DEACTIVATE COS_SURTAX COS_FRANTAX COS_OTHERTAX
+
+def process_USOCDRVR_PLN():    
+debug("****** procedure==>  "+whereami()+" ******")
+    "151700"
+    global Level
+    global x_tbl
+    global current_abbd_rec_key   
+#    FIXFORM X-225 X5 X6 X13 X31 X11 TUSOC/5 X26 X5 X5 X8 X8 X3
+#    FIXFORM X1 X5 X2 X1 X5 X26 X8 X1 X44    
+    TUSOC=line[72:77]
+    
+    if Level in ('L','LU'):
+#        GOTO LOCUSOC_PLN;  logic below
+#        -************************************************************
+#        -*  THIS CASE PROCESSES THE 1517 LOCATION LEVEL USOCS FROM CASE CKTUSOC
+#        -*   IF LEVEL EQUALS 'L' OR 'LU'
+#        -************************************************************
+
+        USOC_CNT = USOC_CNT;
+        QUSOC = QUSOC;
+        UCODE = '  ';
+        LEVEL = 'LU';
+#        FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X31 X11
+#        FIXFORM USOC/5 PLAN_ID/26 RQRD_PL_QTY/5 VAR_PL_QTY/5
+#        FIXFORM TRM_STRT_DAT/8 TRM_END_DAT/8 LNGTH_OF_TRM/3 PL_TYP_INDR/1
+#        FIXFORM DSCNT_PCTGE/Z5.2 SYS_CPCTY/2 ADD_DIS_PL_IND/1
+#        FIXFORM SPL_OFR_PCTGE/Z5.2 SPL_OFR_IDENT/26 S_OFR_END_DAT/8
+#        FIXFORM PL_TAR_TYP_INDR/1 X44
+        USOC=line[72:77]
+        PLAN_ID=line[77:103]
+        RQRD_PL_QTY=line[103:108]
+        VAR_PL_QTY=line[108:113]
+        TRM_STRT_DAT=line[113:121]
+        TRM_END_DAT=line[121:129]
+        LNGTH_OF_TRM=line[129:132]
+        PL_TYP_INDR=line[132:133]
+        DSCNT_PCTGE=line[133:138]
+        SYS_CPCTY=line[138:140]
+        ADD_DIS_PL_IND=line[140:141]
+        SPL_OFR_PCTGE=line[141:146]
+        SPL_OFR_IDENT=line[146:172]
+        S_OFR_END_DAT=line[172:180]
+        PL_TAR_TYP_INDR=line[180:181]
+        
+        if UACT == 'D':
+            pass @GOTO TOP;
+        else:
+            update record
+#        MATCH QUSOC USOC USOC_CNT
+#          ON NOMATCH REJECT
+#          ON MATCH UPDATE PLAN_ID RQRD_PL_QTY VAR_PL_QTY
+#          ON MATCH UPDATE TRM_STRT_DAT TRM_END_DAT LNGTH_OF_TRM
+#          ON MATCH UPDATE PL_TYP_INDR DSCNT_PCTGE SYS_CPCTY
+#          ON MATCH UPDATE ADD_DIS_PL_IND SPL_OFR_PCTGE SPL_OFR_IDENT
+#          ON MATCH UPDATE S_OFR_END_DAT PL_TAR_TYP_INDR
+#          ON MATCH DEACTIVATE PLAN_ID RQRD_PL_QTY VAR_PL_QTY
+#          ON MATCH DEACTIVATE TRM_STRT_DAT TRM_END_DAT LNGTH_OF_TRM
+#          ON MATCH DEACTIVATE PL_TYP_INDR DSCNT_PCTGE SYS_CPCTY
+#          ON MATCH DEACTIVATE ADD_DIS_PL_IND SPL_OFR_PCTGE SPL_OFR_IDENT
+#          ON MATCH DEACTIVATE S_OFR_END_DAT PL_TAR_TYP_INDR
+
+    elif TUSOC.rstrip(' ') in ('UDP', 'U3P','U6P'):
+#        GOTO CKTUSOC_PLN  logic below
+#        -************************************************************
+#        -*  THIS CASE PROCESSES CIRCUIT LEVEL USOC RECORDS 401517. AND
+#        -*  UPDATES THE CKTUSOC SEGMENT. SET LEVEL TO 'CU'.
+#        -*  CHECK TO SEE IF THIS IS A CIRCUIT LEVEL RECORD OR LOCATION LEVEL
+#        -************************************************************
+        LEVEL = 'CU';
+        CUACT = CUACT;
+        CUSOCQTY = CUSOCQTY;
+#        FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X31 X11
+#        FIXFORM CUSOC/5 CU_PLAN_ID/26 CU_RQRD_PL_QTY/5 CU_VAR_PL_QTY/5
+#        FIXFORM CU_TRM_STRT_DAT/8 CU_TRM_END_DAT/8 CU_LNGTH_OF_TRM/3
+#        FIXFORM CU_PL_TYP_INDR/1 CU_DSCNT_PCTGE/Z5.2 CU_SYS_CPCTY/2
+#        FIXFORM CU_ADD_DIS_PL_IND/1 CU_SPL_OFR_PCTGE/Z5.2 CU_SPL_OFR_IDENT/26
+#        FIXFORM CU_S_OFR_END_DAT/8 CU_PL_TAR_TYP_INDR/1 X44
+        
+        CUSOC=line[72:77]
+        CU_PLAN_ID=line[77:103]
+        CU_RQRD_PL_QTY=line[103:108]
+        CU_VAR_PL_QTY=line[108:113]
+        CU_TRM_STRT_DAT=line[113:121]
+        CU_TRM_END_DAT=line[121:129]
+        CU_LNGTH_OF_TRM=line[129:132]
+        CU_PL_TYP_INDR=line[132:133]
+        CU_DSCNT_PCTGE=line[133:138]
+        CU_SYS_CPCTY=line[138:140]
+        CU_ADD_DIS_PL_IND=line[140:141]
+        CU_SPL_OFR_PCTGE=line[141:146]
+        CU_SPL_OFR_IDENT=line[146:172]
+        CU_S_OFR_END_DAT=line[172:180]
+        CU_PL_TAR_TYP_INDR=line[180:181]
+        
+        
+        if CUACT == 'D':
+            pass  #GOTO TOP
+        else:
+            update record
+#        MATCH CUSOC CUSOCQTY
+#          ON NOMATCH REJECT
+#          ON MATCH UPDATE CU_PLAN_ID CU_RQRD_PL_QTY CU_VAR_PL_QTY
+#          ON MATCH UPDATE CU_TRM_STRT_DAT CU_TRM_END_DAT CU_LNGTH_OF_TRM
+#          ON MATCH UPDATE CU_PL_TYP_INDR CU_DSCNT_PCTGE CU_SYS_CPCTY
+#          ON MATCH UPDATE CU_ADD_DIS_PL_IND CU_SPL_OFR_PCTGE CU_SPL_OFR_IDENT
+#          ON MATCH UPDATE CU_S_OFR_END_DAT CU_PL_TAR_TYP_INDR
+#          ON MATCH DEACTIVATE CU_PLAN_ID CU_RQRD_PL_QTY CU_VAR_PL_QTY
+#          ON MATCH DEACTIVATE CU_TRM_STRT_DAT CU_TRM_END_DAT CU_LNGTH_OF_TRM
+#          ON MATCH DEACTIVATE CU_PL_TYP_INDR CU_DSCNT_PCTGE CU_SYS_CPCTY
+#          ON MATCH DEACTIVATE CU_ADD_DIS_PL_IND CU_SPL_OFR_PCTGE CU_SPL_OFR_IDENT
+#          ON MATCH DEACTIVATE CU_S_OFR_END_DAT CU_PL_TAR_TYP_INDR
+#            
+    else:
+#        GOTO COSUSOC_PLN logic below
+#        -************************************************************
+#        -*  THIS CASE PROCESSES CIRCUIT LEVEL USOC RECORDS 401517. AND
+#        -*  UPDATES THE CKTUSOC SEGMENT. SET LEVEL TO 'CO'.
+#        -*  CHECK TO SEE IF THIS IS A CIRCUIT LEVEL RECORD OR LOCATION LEVEL
+#        -************************************************************
+        IF LEVEL EQ 'L' OR 'LU' GOTO LOCUSOC_PLN;
+        COMPUTE
+        LEVEL = 'CO';
+        CIRCUIT = CIRCUIT;
+        COSACT = COSACT;
+#        FIXFORM X-225 X5 X6 X13 X31 X11
+#        FIXFORM COS_USOC/5 CO_PLAN_ID/26 CO_RQRD_PL_QTY/5 CO_VAR_PL_QTY/5
+#        FIXFORM CO_TRM_STRT_DAT/8 CO_TRM_END_DAT/8 CO_LNGTH_OF_TRM/3
+#        FIXFORM CO_PL_TYP_INDR/1 CO_DSCNT_PCTGE/Z5.2 CO_SYS_CPCTY/2
+#        FIXFORM CO_ADD_DIS_PL_IND/1 CO_SPL_OFR_PCTGE/Z5.2 CO_SPL_OFR_IDENT/26
+#        FIXFORM CO_S_OFR_END_DAT/8 CO_PL_TAR_TYP_INDR/1 X44
+        IF COSACT EQ 'D' GOTO TOP;
+        MATCH CIRCUIT
+          ON NOMATCH REJECT
+          ON MATCH UPDATE CO_PLAN_ID CO_RQRD_PL_QTY CO_VAR_PL_QTY
+          ON MATCH UPDATE CO_TRM_STRT_DAT CO_TRM_END_DAT CO_LNGTH_OF_TRM
+          ON MATCH UPDATE CO_PL_TYP_INDR CO_DSCNT_PCTGE CO_SYS_CPCTY
+          ON MATCH UPDATE CO_ADD_DIS_PL_IND CO_SPL_OFR_PCTGE CO_SPL_OFR_IDENT
+          ON MATCH UPDATE CO_S_OFR_END_DAT CO_PL_TAR_TYP_INDR
+          ON MATCH DEACTIVATE CO_PLAN_ID CO_RQRD_PL_QTY CO_VAR_PL_QTY
+          ON MATCH DEACTIVATE CO_TRM_STRT_DAT CO_TRM_END_DAT CO_LNGTH_OF_TRM
+          ON MATCH DEACTIVATE CO_PL_TYP_INDR CO_DSCNT_PCTGE CO_SYS_CPCTY
+          ON MATCH DEACTIVATE CO_ADD_DIS_PL_IND CO_SPL_OFR_PCTGE CO_SPL_OFR_IDENT
+          ON MATCH DEACTIVATE CO_S_OFR_END_DAT CO_PL_TAR_TYP_INDR
+    
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+#      
+##
+##INITIALIZATION PARAGRAPHS
+##INITIALIZATION PARAGRAPHS
+##INITIALIZATION PARAGRAPHS
+##INITIALIZATION PARAGRAPHS
+##INITIALIZATION PARAGRAPHS
+##INITIALIZATION PARAGRAPHS
+## 
+deff initialize_CKTREC_tbl():            
+    debug("****** procedure==>  "+whereami()+" ******")
+    global CSR_CKTREC_tbl
+    global current_abbd_rec_key     
+    
+    CSR_CKTREC_tbl['ACNA']=current_abbd_rec_key['ACNA']    
+    CSR_CKTREC_tbl['EOB_DATE']=current_abbd_rec_key['EOB_DATE']
+    CSR_CKTREC_tbl['BAN']=current_abbd_rec_key['BAN']
+    
+    
+    CSR_CKTREC_tbl['CDINSTCC']=''
+    CSR_CKTREC_tbl['FID']=''
+    CSR_CKTREC_tbl['PSM']=''
+    CSR_CKTREC_tbl['CIRCUIT']=''
+    CSR_CKTREC_tbl['CKT_LTP']=''
+    CSR_CKTREC_tbl['CKT_MAN_BAN_UNITS']=''
+    CSR_CKTREC_tbl['CDACTCC']=''
+    CSR_CKTREC_tbl['CACT']=''
+    CSR_CKTREC_tbl['INPUT_RECORDS']=''
+                
+ 
+def initialize_LOCSEG_tbl():
+    debug("****** procedure==>  "+whereami()+" ******")
+    global CSR_LOCSEG_tbl
+    global current_abbd_rec_key     
+    
+    CSR_LOCSEG_tbl['ACNA']=current_abbd_rec_key['ACNA']    
+    CSR_LOCSEG_tbl['EOB_DATE']=current_abbd_rec_key['EOB_DATE']
+    CSR_LOCSEG_tbl['BAN']=current_abbd_rec_key['BAN']
+    
+    
+    CSR_LOCSEG_tbl['LDINSTCC']=''
+    CSR_LOCSEG_tbl['CKLFID']=''
+    CSR_LOCSEG_tbl['LOC_DATA']=''
+    CSR_LOCSEG_tbl['TLOC']=''
+    CSR_LOCSEG_tbl['LOC_LTP']=''
+    CSR_LOCSEG_tbl['LOC_MAN_BAN_UNITS']=''
+    CSR_LOCSEG_tbl['LDACTCC']=''
+    CSR_LOCSEG_tbl['LACT']=''
+    CSR_LOCSEG_tbl['USOCCNT']=''
+            
+    
 def  initialize_BCCBSPL_tbl():
     debug("****** procedure==>  "+whereami()+" ******")
     global CSR_BCCBSPL_tbl
@@ -659,24 +1418,24 @@ def initialize_ACTLREC_tbl():
     CSR_ACTLREC_tbl['INPUT_RECORDS']=''
 
 
-def initialize_CSR_CKTSEG_tbl():
+def initialize_CSR_CKTREC_tbl():
     debug("****** procedure==>  "+whereami()+" ******")
-    global CSR_CKTSEG_tbl
+    global CSR_CKTREC_tbl
     global current_abbd_rec_key 
     
-    CSR_CKTSEG_tbl['ACNA']=current_abbd_rec_key['ACNA']    
-    CSR_CKTSEG_tbl['EOB_DATE']=current_abbd_rec_key['EOB_DATE']
-    CSR_CKTSEG_tbl['BAN']=current_abbd_rec_key['BAN']   
+    CSR_CKTREC_tbl['ACNA']=current_abbd_rec_key['ACNA']    
+    CSR_CKTREC_tbl['EOB_DATE']=current_abbd_rec_key['EOB_DATE']
+    CSR_CKTREC_tbl['BAN']=current_abbd_rec_key['BAN']   
     
-    CSR_CKTSEG_tbl['CDINSTCC']=''
-    CSR_CKTSEG_tbl['FID']=''
-    CSR_CKTSEG_tbl['PSM']=''
-    CSR_CKTSEG_tbl['CIRCUIT']=''
-    CSR_CKTSEG_tbl['CKT_LTP']=''
-    CSR_CKTSEG_tbl['CKT_MAN_BAN_UNITS']=''
-    CSR_CKTSEG_tbl['CDACTCC']=''
-    CSR_CKTSEG_tbl['CACT']=''
-    CSR_CKTSEG_tbl['INPUT_RECORDS']=''
+    CSR_CKTREC_tbl['CDINSTCC']=''
+    CSR_CKTREC_tbl['FID']=''
+    CSR_CKTREC_tbl['PSM']=''
+    CSR_CKTREC_tbl['CIRCUIT']=''
+    CSR_CKTREC_tbl['CKT_LTP']=''
+    CSR_CKTREC_tbl['CKT_MAN_BAN_UNITS']=''
+    CSR_CKTREC_tbl['CDACTCC']=''
+    CSR_CKTREC_tbl['CACT']=''
+    CSR_CKTREC_tbl['INPUT_RECORDS']=''
  
     
 def initialize_CSR_LOCSEG_tbl():
