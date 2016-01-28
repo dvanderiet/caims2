@@ -43,6 +43,7 @@ startTM=datetime.datetime.now();
 import cx_Oracle
 import sys
 import ConfigParser
+import os.path
 
 settings = ConfigParser.ConfigParser();
 settings.read('settings.ini')
@@ -57,6 +58,41 @@ con=cx_Oracle.connect(settings.get('OracleSettings','OraCAIMSUser'),settings.get
 debugOn=False
 if debugOn:
     bdt_debug_log = open(settings.get('BDTSettings','BDT_DEBUG'), "w");  
+
+
+
+
+#SET FILE NAME AND PATH
+#--Path comes from settings.ini
+#--file name comes from command line parameter
+#COMMAND LINE EXECUTION Example:
+#python etl_caims_cabs_bdt.py PBCL.CY.XRU0102O.CABS.Oct14.txt
+fileNm=""
+try:
+    fileNm=sys.argv[1] 
+except:
+   raise Exception("ERROR: No file name passed to " + str(sys.argv[0]))
+    
+if fileNm.rstrip(' ') == "":
+    raise Exception("ERROR: File name passed to " + str(sys.argv[0]) +" is empty.")
+else:
+    print "fileNm value is:" + str(fileNm)
+
+path=settings.get('BDTSettings','BDT_CABS_inDir') 
+  
+#fullname="C:\\Users\\dxvand3\\My Documents\\python scripts\\in\\BDTNov2015\\"
+#"PBCL.CY.XRU0102O.CABS.G0353V00.txt"
+fullname =path+fileNm
+
+if os.path.isfile(fullname):
+    print "yes its there"
+else:
+    raise Exception("ERROR: File not found:"+fullname)
+
+
+
+
+
 
 
 root_rec=False
@@ -106,7 +142,13 @@ def init():
   
     "OPEN FILES"
     "   CABS INPUT FILE"
-    bdt_input = open(settings.get('BDTSettings','BDT_CABS_infile'), "r");
+    inFile=settings.get('BDTSettings','BDT_CABS_inDir')
+   
+    
+    
+    
+#    bdt_input = open(settings.get('BDTSettings','BDT_CABS_infile'), "r");
+    bdt_input = open(fullname, "r");
     
     "PROCESS HEADER LINE"
     "  -want to get bill cycle info for output log file "
@@ -987,7 +1029,7 @@ def format_date(datestring):
         #jdate conversion
         return "TO_DATE('"+datestring+"','YY-DDD')"
     elif dtSize==6:
-        return "TO_DATE('"+datestring[5:7]+"-"+MONTH_DICT[datestring[2:4]]+"-"+"20"+datestring[:2]+"','DD-MON-YY')"  
+        return "TO_DATE('"+datestring[4:6]+"-"+MONTH_DICT[datestring[2:4]]+"-"+"20"+datestring[:2]+"','DD-MON-YY')"  
     elif dtSize==8:
         return "TO_DATE('"+datestring[:4]+"-"+datestring[4:6]+"-"+"20"+datestring[6:2]+"','YYYY-MM-DD')"     
  
