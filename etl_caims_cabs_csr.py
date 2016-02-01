@@ -405,13 +405,19 @@ def reset_record_flags():
     
 def process_TYP0101_HEADREC():
     debug("****** procedure==>  "+whereami()+" ******")
-    global verno
+    global verno, Level
     verno=line[82:84]  
 #    CSR_BCCBSPL_tbl['HOLD_BILL']=line[104:105]   
     writelog("** BOS VERSION NUMBER IS "+verno+" ** ")
     writelog("CASE HEADREC HOLD_BILL = "+line[104:105] )
     writelog("**--------------------------**")
-
+    
+    
+    #Reset Variables at this level?????
+    Level=' '    
+    
+    
+    
 def process_ROOTREC_TYP0505(): 
     debug("****** procedure==>  "+whereami()+" ******")
     "050500"
@@ -690,7 +696,7 @@ def process_FIDDRVR():
             CSR_UFID_tbl['FGRP']=line[198:199]
             CSR_UFID_tbl['INPUT_RECORDS']=str(record_id)
             
-            process_insert_table("CAIMS_CSR_UFID", CSR_UFID__tbl, CSR_UFID__DEFN_DICT)   
+            process_insert_table("CAIMS_CSR_UFID", CSR_UFID_tbl, CSR_UFID_DEFN_DICT)   
     else:
         pass #go to top
 
@@ -1168,12 +1174,14 @@ def process_LOCUSOC_36():
 
     CSR_USOC_tbl['UDINSTCC']=line[61:69]
     CSR_USOC_tbl['QUSOC']=line[69:75]
-    CSR_USOC_tbl['USOCRES1']=line[69:71]
-    CSR_USOC_tbl['USOC']=line[71:76]
+    CSR_USOC_tbl['USOCRES1']=line[75:76]
+    CSR_USOC_tbl['USOC']=line[77:82]
     CSR_USOC_tbl['USOC_CNT']=USOC_CNT
-    CSR_USOC_tbl['USOCRES2']=line[197:203]
-    CSR_USOC_tbl['UDACTCC']=line[210:218]
-    UACT=line[218:219]
+    CSR_USOC_tbl['USOCRES2']=line[203:209]
+    
+    CSR_USOC_tbl['UDACTCC']=line[216:224]?
+    
+    UACT=line[224:225]
     CSR_USOC_tbl['UACT']=UACT
     CSR_USOC_tbl['INPUT_RECORDS']=str(record_id) 
                
