@@ -42,11 +42,21 @@ startTM=datetime.datetime.now();
 import cx_Oracle
 import sys
 import ConfigParser
-import os.path
+import os
+#import os.path
 
 settings = ConfigParser.ConfigParser();
 settings.read('settings.ini')
 settings.sections()
+
+
+import platform
+
+#slash="/"
+#if str(platform.system()) == 'Windows':
+#    slash="\"
+
+    
 
 "SET ORACLE CONNECTION"
 con=cx_Oracle.connect(settings.get('OracleSettings','OraCAIMSUser'),settings.get('OracleSettings','OraCAIMSPw'),settings.get('OracleSettings','OraCAIMSSvc'))
@@ -56,11 +66,22 @@ con=cx_Oracle.connect(settings.get('OracleSettings','OraCAIMSUser'),settings.get
 #set to true to get debug statements
 debugOn=True
 if debugOn:
-    csr_debug_log = open(settings.get('CSRSettings','CSR_DEBUG'), "w");  
+    if str(platform.system()) == 'Windows': 
+        debug_log = settings.get('GlobalSettings','WINDOWS_LOG_DIR');
+    else:
+        debug_log = settings.get('GlobalSettings','LINUX_LOG_DIR');
+
+debug_log=os.path.join(debug_log,settings.get('CSRSettings','CSR_DEBUG_FILE_NM'))
+#if debug_log.rstrip(' ').endswith(slash) != True:
+#    debug_log += slash
+print debug_log    
+#debug_log+=settings.get('CSRSettings','CSR_DEBUG_FILE_NM'); 
+
+open(debug_log, "w");
 
 
 #SET FILE NAME AND PATH
-#--Path comes from settings.ini
+#--inputPath comes from settings.ini
 #--file name comes from command line parameter
 #COMMAND LINE EXECUTION Example:
 #python etl_caims_cabs_bdt.py PBCL.CY.XRU0102O.CABS.Oct14.txt
@@ -75,24 +96,25 @@ if fileNm.rstrip(' ') == "":
 else:
     print "fileNm value is:" + str(fileNm)
 
-path=settings.get('CSRSettings','CSR_CABS_inDir') 
+
+
+if str(platform.system()) == 'Windows':
+    inputPath=settings.get('CSRSettings','WINDOWS_CSR_inDir') 
+else:
+    inputPath=settings.get('CSRSettings','LINUX_CSR_inDir') 
+
+
+   
+#if debug_log.rstrip(' ').endswith(slash) != True: 
   
 #fullname="C:\\Users\\dxvand3\\My Documents\\python scripts\\in\\BDTNov2015\\"
 #"PBCL.CY.XRU0102O.CABS.G0353V00.txt"
-fullname =path+fileNm
+fullname =os.path.join(inputPath,fileNm)
 
 if os.path.isfile(fullname):
     print "yes its there"
 else:
     raise Exception("ERROR: File not found:"+fullname)
-
-
-
-
-
-
-
-
 
 
 
@@ -135,7 +157,7 @@ NEGATIVE_NUMS=['}','J','K','L','M','N','O','P','Q','R']
 
 def debug(msg):
     if debugOn:
-        csr_debug_log.write("\n"+str(msg))
+        debug_log.write("\n"+str(msg))
 
 def whereami():
     return inspect.stack()[1][3]         
@@ -1179,7 +1201,7 @@ def process_LOCUSOC_36():
     CSR_USOC_tbl['USOC_CNT']=USOC_CNT
     CSR_USOC_tbl['USOCRES2']=line[203:209]
     
-    CSR_USOC_tbl['UDACTCC']=line[216:224]?
+    CSR_USOC_tbl['UDACTCC']=line[216:224]
     
     UACT=line[224:225]
     CSR_USOC_tbl['UACT']=UACT
@@ -2087,7 +2109,7 @@ def process_close_files():
     global csr_BCCBSPL_log
     
     if debugOn:
-        csr_debug_log.close()
+        debug_log.close()
         
     csr_input.close();
     csr_BCCBSPL_log.close()
