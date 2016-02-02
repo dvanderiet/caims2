@@ -19,7 +19,7 @@ OUTPUT:           ORACLE DWBS001P
                                                                          
 EXTERNAL CALLS:                                         
                                                                          
-LOCATION:         pansco-pdm: /opt/IntrNet/p271app/rpt271/macros         
+LOCATION:         /home/caimsown/etl         
                                                                          
 Copyright 2016, CenturyLink All Rights Reserved. Unpublished and          
 Confidential Property of CenturyLink.                                          
@@ -43,7 +43,8 @@ startTM=datetime.datetime.now();
 import cx_Oracle
 import sys
 import ConfigParser
-import os.path
+import platform
+import os
 
 settings = ConfigParser.ConfigParser();
 settings.read('settings.ini')
@@ -54,16 +55,20 @@ con=cx_Oracle.connect(settings.get('OracleSettings','OraCAIMSUser'),settings.get
  
     
 "CONSTANTS"
+if str(platform.system()) == 'Windows': 
+    output_dir = settings.get('GlobalSettings','WINDOWS_LOG_DIR');
+else:
+    output_dir = settings.get('GlobalSettings','LINUX_LOG_DIR');
+    
 #set to true to get debug statements
 debugOn=False
 if debugOn:
-    bdt_debug_log = open(settings.get('BDTSettings','BDT_DEBUG'), "w");  
-
+    debug_log=open(os.path.join(output_dir,settings.get('BDTSettings','BDT_DEBUG_FILE_NM')),"w")
 
 
 
 #SET FILE NAME AND PATH
-#--Path comes from settings.ini
+#--inputPath comes from settings.ini
 #--file name comes from command line parameter
 #COMMAND LINE EXECUTION Example:
 #python etl_caims_cabs_bdt.py PBCL.CY.XRU0102O.CABS.Oct14.txt
@@ -78,18 +83,18 @@ if fileNm.rstrip(' ') == "":
 else:
     print "fileNm value is:" + str(fileNm)
 
-path=settings.get('BDTSettings','BDT_CABS_inDir') 
-  
-#fullname="C:\\Users\\dxvand3\\My Documents\\python scripts\\in\\BDTNov2015\\"
-#"PBCL.CY.XRU0102O.CABS.G0353V00.txt"
-fullname =path+fileNm
+
+if str(platform.system()) == 'Windows':
+    inputPath=settings.get('BDTSettings','WINDOWS_BDT_inDir') 
+else:
+    inputPath=settings.get('BDTSettings','LINUX_BDT_inDir') 
+
+fullname =os.path.join(inputPath,fileNm)
 
 if os.path.isfile(fullname):
-    print "yes its there"
+    print ("Input file:"+fullname)
 else:
     raise Exception("ERROR: File not found:"+fullname)
-
-
 
 
 
@@ -142,14 +147,10 @@ def init():
   
     "OPEN FILES"
     "   CABS INPUT FILE"
-    inFile=settings.get('BDTSettings','BDT_CABS_inDir')
-   
-    
-    
-    
-#    bdt_input = open(settings.get('BDTSettings','BDT_CABS_infile'), "r");
     bdt_input = open(fullname, "r");
     
+    
+
     "PROCESS HEADER LINE"
     "  -want to get bill cycle info for output log file "
     "  -this will make the log file names more sensical " 
@@ -161,13 +162,7 @@ def init():
     cycl_time=headerLine[12:21].replace('\n','')
 
     "  CREATE LOG FILE WITH CYCLE DATE FROM HEADER AND RUN TIME OF THIS JOB"
-    log_file=str(settings.get('BDTSettings','BDT_LOG_DIR'))
-    if log_file.endswith("/"):
-        pass
-    else:
-        log_file+="/"
-        
-    log_file = str(settings.get('BDTSettings','BDT_LOG_DIR'))+"BDT_Cycle"+str(cycl_yy)+str(cycl_mmdd)+str(cycl_time)+"_"+startTM.strftime("%Y%m%d_@%H%M") +".txt"
+    log_file=os.path.join(output_dir,"BDT_Cycle"+str(cycl_yy)+str(cycl_mmdd)+str(cycl_time)+"_"+startTM.strftime("%Y%m%d_@%H%M") +".txt")
          
     bdt_BCCBBIL_log = open(log_file, "w");
     bdt_BCCBBIL_log.write("-BDT CAIMS ETL PROCESS-")
