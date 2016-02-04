@@ -39,14 +39,14 @@ import datetime
 import inspect
 #import collections
 import collections
-startTM=datetime.datetime.now();
+startTM=datetime.datetime.now()
 import cx_Oracle
 import sys
 import ConfigParser
 import os
 import platform
 
-settings = ConfigParser.ConfigParser();
+settings = ConfigParser.ConfigParser()
 settings.read('settings.ini')
 settings.sections()
 
@@ -56,9 +56,9 @@ con=cx_Oracle.connect(settings.get('OracleSettings','OraCAIMSUser'),settings.get
     
 "CONSTANTS"
 if str(platform.system()) == 'Windows': 
-    output_dir = settings.get('GlobalSettings','WINDOWS_LOG_DIR');
+    output_dir = settings.get('GlobalSettings','WINDOWS_LOG_DIR')
 else:
-    output_dir = settings.get('GlobalSettings','LINUX_LOG_DIR');
+    output_dir = settings.get('GlobalSettings','LINUX_LOG_DIR')
 
 #set to true to get debug statements
 debugOn=True
@@ -97,7 +97,10 @@ else:
     raise Exception("ERROR: File not found:"+fullname)
 
 
-
+USOCCNT = 0
+USOC_CNT = 0
+UCODE = ''
+Level = ''
 
 root_rec=False
 csr_tape_val=False
@@ -147,7 +150,7 @@ def init():
   
     "OPEN FILES"
     "   CABS INPUT FILE"
-    csr_input = open(fullname, "r");
+    csr_input = open(fullname, "r")
     
     "PROCESS HEADER LINE"
     "  -want to get bill cycle info for output log file "
@@ -163,7 +166,7 @@ def init():
     
     log_file=os.path.join(output_dir,"CSR_Cycle"+str(cycl_yy)+str(cycl_mmdd)+str(cycl_time)+"_"+startTM.strftime("%Y%m%d_@%H%M") +".txt")
          
-    csr_BCCBSPL_log = open(log_file, "w");
+    csr_BCCBSPL_log = open(log_file, "w")
     csr_BCCBSPL_log.write("-CSR CAIMS ETL PROCESS-")
     
     if record_id not in settings.get('CSRSettings','CSRHDR'):
@@ -203,6 +206,7 @@ def main():
     global CSR_COSFID_tbl, CSR_COSFID_DEFN_DICT
     global CSR_UFID_tbl, CSR_UFID_DEFN_DICT
     global CSR_USOC_tbl, CSR_USOC_DEFN_DICT
+    global CSR_CUFID_tbl, CSR_CUFID_DEFN_DICT
     global CSR_CFID_tbl, CSR_CFID_DEFN_DICT
     
     
@@ -236,6 +240,8 @@ def main():
     CSR_UFID_DEFN_DICT=createTableTypeDict('CAIMS_CSR_UFID') 
     CSR_USOC_tbl=collections.OrderedDict()
     CSR_USOC_DEFN_DICT=createTableTypeDict('CAIMS_CSR_USOC') 
+    CSR_CUFID_tbl=collections.OrderedDict()
+    CSR_CUFID_DEFN_DICT=createTableTypeDict('CAIMS_CSR_CUFID') 
     CSR_CFID_tbl=collections.OrderedDict()
     CSR_CFID_DEFN_DICT=createTableTypeDict('CAIMS_CSR_CFID') 
 
@@ -453,12 +459,12 @@ def process_ROOTREC_CHEKFID():
     
     if line[189:193] == 'CCNA':
         #do UPCCNA
-         #CCNA = EDIT(BILLFID_DATA,'999$'); get first 3 chars
+         #CCNA = EDIT(BILLFID_DATA,'999$')  get first 3 chars
         CSR_BCCBSPL_tbl['CCNA']=line[183:186]
         CSR_BCCBSPL_tbl['INPUT_RECORDS']+="*"+str(record_id)
     elif line[189:192] == 'MCN':
         #do this
-        #MCN = EDIT(BILLFID_DATA,'9999999999999999999$');--get first 19 chars
+        #MCN = EDIT(BILLFID_DATA,'9999999999999999999$') --get first 19 chars
         CSR_BCCBSPL_tbl['MCN']=line[183:202]
         CSR_BCCBSPL_tbl['INPUT_RECORDS']+="*"+str(record_id)
     else:
@@ -581,9 +587,9 @@ def process_TYP1505_CKT_LOC():
 #FIXFORM X1 LOC_LTP/A4 X1 LOC_MAN_BAN_UNITS/Z7.4 X6
 #FIXFORM LDACTCC/8 LACT/A1
 #COMPUTE
-#USOCCNT/I2=0;
+#USOCCNT/I2=0 
 #below:It would ignore the first two characters and get the 3rd and 4th.
-#TLOC = EDIT(LOC_DATA,'$$99$');
+#TLOC = EDIT(LOC_DATA,'$$99$') 
 
             USOCCNT=0
       
@@ -703,7 +709,7 @@ def process_LOCFIDRVR():
  
     if tfid == 'LSO ':                      
 #         GOTO LOCLSOUP (UPDATE THE LSO FIELD IN THE LOC SEGMENT )
-#         LOC = LOC;
+#         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 LSO/7
         CSR_LOC_tbl['LSO']=line[77:84]
         CSR_LOC_tbl['INPUT_RECORDS']=str(record_id)
@@ -711,84 +717,84 @@ def process_LOCFIDRVR():
     elif tfid == 'FSO ':  
         
 #         GOTO LOCFSOUP (UPDATE THE FSO FIELD IN THE LOC SEGMENT )
-#         LOC = LOC;
+#         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 FSO/7
         CSR_LOC_tbl['FSO']=line[77:84]
         CSR_LOC_tbl['INPUT_RECORDS']=str(record_id)
         process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT)
     elif tfid == 'NCI ': 
 #         GOTO LOCNCIUP (UPDATE THE NCI FIELD IN THE LOC SEGMENT )
-#         LOC = LOC;
+#         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 NCI/13
         CSR_LOC_tbl['NCI']=line[77:90]
         CSR_LOC_tbl['INPUT_RECORDS']=str(record_id)
         process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT)
     elif tfid == 'NC  ': 
 #         GOTO LOCLNCUP (UPDATE THE LNCODE FIELD IN THE LOC SEGMENT )
-#         LOC = LOC;
+#         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 LNCODE/4
         CSR_LOC_tbl['LNCODE']=line[77:81]
         CSR_LOC_tbl['INPUT_RECORDS']=str(record_id)
         process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT)
     elif tfid == 'ICO ': 
 #        GOTO LOCICOUP (UPDATE THE ICO FIELD IN THE LOC SEGMENT )
-#        LOC = LOC;
+#        LOC = LOC 
 #        FIXFORM X-225 X5 X6 X13 X42 X4 X1 ICO/4
         CSR_LOC_tbl['ICO']=line[77:81]
         CSR_LOC_tbl['INPUT_RECORDS']=str(record_id)
         process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT)
     elif tfid == 'SGN ': 
 #         GOTO LOCSGNUP (UPDATE THE SGN FIELD IN THE LOC SEGMENT )
-#         LOC = LOC;
+#         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 SGN/3
         CSR_LOC_tbl['SGN']=line[77:80]
         CSR_LOC_tbl['INPUT_RECORDS']=str(record_id)
         process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT)
     elif tfid == 'TAR ': 
 #         GOTO LOCTARUP  (UPDATE THE LTAR FIELD IN THE LOC SEGMENT )
-#         LOC = LOC;
+#         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 LTAR/4
         CSR_LOC_tbl['LTAR']=line[77:81]
         CSR_LOC_tbl['INPUT_RECORDS']=str(record_id)
         process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT)
     elif tfid == 'RTAR': 
 #         GOTO LOCRTARUP (UPDATE THE LRTAR FIELD IN THE LOC SEGMENT )
-#         LOC = LOC;
+#         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 LRTAR/4
         CSR_LOC_tbl['LRTAR']=line[77:81] 
         CSR_LOC_tbl['INPUT_RECORDS']=str(record_id)
         process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT)
     elif tfid == 'DES ': 
 #         GOTO LOCLDESUP (UPDATE THE LDES  FIELD IN THE LOC SEGMENT )
-#         LOC = LOC;
+#         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 LDES/36
         CSR_LOC_tbl['LDES']=line[77:113] 
         CSR_LOC_tbl['INPUT_RECORDS']=str(record_id)
         process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT)
     elif tfid == 'HSO ': 
 #         GOTO LOCHSOUP  (UPDATE THE HSO FIELD IN THE LOC SEGMENT )
-#         LOC = LOC;
+#         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 HSO/7
         CSR_LOC_tbl['HSO']=line[77:84]
         CSR_LOC_tbl['INPUT_RECORDS']=str(record_id)
         process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT)
     elif tfid == 'CFA ': 
 #         GOTO LOCCFAUP  (UPDATE THE CFA FIELD IN THE LOC SEGMENT )
-#         LOC = LOC;
+#         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 CFA/40
         CSR_LOC_tbl['CFA']=line[77:117]
         CSR_LOC_tbl['INPUT_RECORDS']=str(record_id)
         process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT)
     elif tfid == 'XR  ': 
 #         GOTO LOCXRUP   (UPDATE THE XR  FIELD IN THE LOC SEGMENT )
-#         LOC = LOC;
+#         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 XR/4
         CSR_LOC_tbl['XR']=line[77:81]
         CSR_LOC_tbl['INPUT_RECORDS']=str(record_id)
         process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT)
     elif tfid == 'SN  ': 
 #         GOTO LOCSNUP (UPDATE THE SN  FIELD IN THE LOC SEGMENT ) 
-#         LOC = LOC;
+#         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 SN/30
         CSR_LOC_tbl['SN']=line[77:107]
         CSR_LOC_tbl['INPUT_RECORDS']=str(record_id)
@@ -841,7 +847,7 @@ def process_CKTFIDRVR():
     
     if tfid == 'NC  ': 
 #         GOTO CKTNCUP (LOADS THE NCODE FIELD IN THE CKTSEG OF THE DATABASE)
-          #CIRCUIT = CIRCUIT;?????
+          #CIRCUIT = CIRCUIT ?????
          #FIXFORM X-225 X5 X6 X13 X42 X4 X1 NCODE/4
          #MATCH CIRCUIT? update ncode
          CSR_CKT_tbl['NCODE']=line[77:81]
@@ -849,7 +855,7 @@ def process_CKTFIDRVR():
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
     elif tfid == 'PIU ': 
 #        GOTO CKTPIUUP (LOADS THE PIU FIELD IN THE CKTSEG OF THE DATABASE)
-#        CIRCUIT = CIRCUIT;
+#        CIRCUIT = CIRCUIT 
 #        FIXFORM X-225 X5 X6 X13 X42 X4 X1 PIU/3
          #MATCH CIRCUIT? update piu
          CSR_CKT_tbl['PIU']=line[77:80]
@@ -857,7 +863,7 @@ def process_CKTFIDRVR():
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
     elif tfid == 'ASG ': 
 #         GOTO CKTASGUP (LOADS THE ASG FIELD IN THE CKTSEG OF THE DATABASE)
-#         CIRCUIT = CIRCUIT;
+#         CIRCUIT = CIRCUIT 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 ASG/6
           #MATCH CIRCUIT? update asg
          CSR_CKT_tbl['ASG']=line[77:83]
@@ -865,7 +871,7 @@ def process_CKTFIDRVR():
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
     elif tfid == 'LCC ': 
 #         GOTO CKTLCCUP (LOADS THE LCC FIELD IN THE CKTSEG OF THE DATABASE)
-#         CIRCUIT = CIRCUIT;
+#         CIRCUIT = CIRCUIT 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 LCC/3
 #         #MATCH CIRCUIT? update lcc
          CSR_CKT_tbl['LCC']=line[77:80]
@@ -873,7 +879,7 @@ def process_CKTFIDRVR():
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
     elif tfid == 'BAND': 
 #         GOTO CKTBNDUP (LOADS THE BAND FIELD IN THECKTSEG OF THE DATABASE)
-#        CIRCUIT = CIRCUIT;
+#        CIRCUIT = CIRCUIT 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 BAND/1
          #MATCH CIRCUIT? update band
          CSR_CKT_tbl['BAND']=line[77:78]
@@ -881,7 +887,7 @@ def process_CKTFIDRVR():
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
     elif tfid == 'TAR ': 
 #        GOTO CKTTARUP (LOADS THE TAR FIELD IN THE CKTSEG OF THE DATABASE)
-#        CIRCUIT = CIRCUIT;
+#        CIRCUIT = CIRCUIT 
 #        FIXFORM X-225 X5 X6 X13 X42 X4 X1 TAR/4
          #MATCH CIRCUIT? update TAR
          CSR_CKT_tbl['TAR']=line[77:81]
@@ -889,7 +895,7 @@ def process_CKTFIDRVR():
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
     elif tfid == 'RTAR': 
 #         GOTO CKTRTARUP (CRTAR  FIELD IN THE CKTSEG OF THE DATABASE)
-#         CIRCUIT = CIRCUIT;
+#         CIRCUIT = CIRCUIT 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 RTAR/4
          #MATCH CIRCUIT? update RTAR
          CSR_CKT_tbl['RTAR']=line[77:81]
@@ -897,7 +903,7 @@ def process_CKTFIDRVR():
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
     elif tfid == 'LLN ': 
 #         GOTO CKTLLNUP (LOADS THE LLN FIELD IN THE CKTSEG OF THE DATABASE)
-#         CIRCUIT = CIRCUIT;
+#         CIRCUIT = CIRCUIT 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 LLN/12
          #MATCH CIRCUIT? update LLN
          CSR_CKT_tbl['LLN']=line[77:89]
@@ -905,7 +911,7 @@ def process_CKTFIDRVR():
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
     elif tfid == 'TLI ': 
 #         GOTO CKTTLIUP (LOADS THE TLI FIELD IN THE CKTSEG OF THE DATABASE)
-#         CIRCUIT = CIRCUIT;
+#         CIRCUIT = CIRCUIT 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 TLI/12
          #MATCH CIRCUIT? update tli
          CSR_CKT_tbl['TLI']=line[77:89]
@@ -913,7 +919,7 @@ def process_CKTFIDRVR():
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
     elif tfid == 'PICX': 
 #         GOTO CKTPICXUP (LOADS THE PICX FIELD IN THE CKTSEG OF THE DATABASE)
-#         CIRCUIT = CIRCUIT;
+#         CIRCUIT = CIRCUIT 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 PICX/3
          #MATCH CIRCUIT? update picx
          CSR_CKT_tbl['PICX']=line[77:80]
@@ -921,7 +927,7 @@ def process_CKTFIDRVR():
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
     elif tfid == 'HML ': 
 #         GOTO CKTHMLUP (LOADS THE HML FIELD IN THE CKTSEG OF THE DATABASE)
-#         CIRCUIT = CIRCUIT;
+#         CIRCUIT = CIRCUIT 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 HML/40
           #MATCH CIRCUIT? update hml
          CSR_CKT_tbl['HML']=line[77:117]
@@ -929,7 +935,7 @@ def process_CKTFIDRVR():
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
     elif tfid == 'HTG ': 
 #         GOTO CKTHTGUP (LOADS THE HTG FIELD IN THE CKTSEG OF THE DATABASE)
-#         CIRCUIT = CIRCUIT;
+#         CIRCUIT = CIRCUIT 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 HTG/40
           #MATCH CIRCUIT? update htg
          CSR_CKT_tbl['HTG']=line[77:117]
@@ -937,7 +943,7 @@ def process_CKTFIDRVR():
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
     elif tfid == 'TN  ': 
 #         GOTO CKTTNUP (LOADS THE TN FIELD IN THE CKTSEG OF THE DATABASE)
-#         CIRCUIT = CIRCUIT;
+#         CIRCUIT = CIRCUIT 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 TN/12
           #MATCH CIRCUIT? update tn
          CSR_CKT_tbl['TN']=line[77:89]
@@ -945,7 +951,7 @@ def process_CKTFIDRVR():
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
     elif tfid == 'TER ': 
 #         GOTO CKTTERUP (LOADS THE TER FIELD IN THE CKTSEG OF THE DATABASE)
-#         CIRCUIT = CIRCUIT;
+#         CIRCUIT = CIRCUIT 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 TER/4
           #MATCH CIRCUIT? update ter
          CSR_CKT_tbl['TER']=line[77:81]
@@ -953,7 +959,7 @@ def process_CKTFIDRVR():
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
     elif tfid == 'STN ': 
 #         GOTO CKTSTNUP (LOADS THE STN FIELD IN THE CKTSEG OF THE DATABASE)
-#         CIRCUIT = CIRCUIT;
+#         CIRCUIT = CIRCUIT 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 STN/24
           #MATCH CIRCUIT? update stn
          CSR_CKT_tbl['STN']=line[77:91]
@@ -961,7 +967,7 @@ def process_CKTFIDRVR():
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
     elif tfid == 'SFN ': 
 #         GOTO CKTSFNUP (LOADS THE SFN FIELD IN THE CKTSEG OF THE DATABASE)
-#         CIRCUIT = CIRCUIT;
+#         CIRCUIT = CIRCUIT 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 SFN/4
           #MATCH CIRCUIT? update sfn
          CSR_CKT_tbl['SFN']=line[77:81]  
@@ -969,7 +975,7 @@ def process_CKTFIDRVR():
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
     elif tfid == 'SFG ': 
 #         GOTO CKTSFGUP (LOADS THE SFG FIELD IN THE CKTSEG OF THE DATABASE)
-#         CIRCUIT = CIRCUIT;
+#         CIRCUIT = CIRCUIT 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 SFG/6
           #MATCH CIRCUIT? update sfg
          CSR_CKT_tbl['SFG']=line[77:83] 
@@ -977,7 +983,7 @@ def process_CKTFIDRVR():
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
     elif tfid == 'CKR ': 
 #         GOTO CKTCKRUP (LOADS THE CKR FIELD IN THE CKTSEG OF THE DATABASE)
-#         CIRCUIT = CIRCUIT;
+#         CIRCUIT = CIRCUIT 
 #        FIXFORM X-225 X5 X6 X13 X42 X4 X1 CKR/36
          #MATCH CIRCUIT? update CKR
          CSR_CKT_tbl['CKR']=line[77:113]
@@ -990,7 +996,7 @@ def process_CKTFIDRVR():
 #        -* THIS CASE READS THE FLOATED FID AND LOADS THE GSZ FIELD IN THE
 #        -* CKTSEG OF THE DATABASE
 #        -************************************************************
-#        CIRCUIT = CIRCUIT;
+#        CIRCUIT = CIRCUIT 
 #        FIXFORM X-225 X5 X6 X13 X42 X4 X1 GSZ/3
         #7+5+6+13+42+4+1  =78 
          CSR_CKT_tbl['GSZ']=line[77:80]
@@ -1004,7 +1010,7 @@ def process_CKTFIDRVR():
 #        -* CKTSEG OF THE DATABASE
 #        -************************************************************
 #        COMPUTE
-#        CIRCUIT = CIRCUIT;
+#        CIRCUIT = CIRCUIT 
 #        FIXFORM X-225 X5 X6 X13 X42 X4 X1 NHN/12
          CSR_CKT_tbl['NHN']=line[77:89]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
@@ -1017,7 +1023,7 @@ def process_CKTFIDRVR():
 #        -* CKTSEG OF THE DATABASE
 #        -************************************************************
 #        COMPUTE
-#        CIRCUIT = CIRCUIT;
+#        CIRCUIT = CIRCUIT 
 #        FIXFORM X-225 X5 X6 X13 X42 X4 X1 PTN/12
          CSR_CKT_tbl['PTN']=line[77:89] 
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
@@ -1030,7 +1036,7 @@ def process_CKTFIDRVR():
 #        -* CKTSEG OF THE DATABASE
 #        -************************************************************
 #        COMPUTE
-#        CIRCUIT = CIRCUIT;
+#        CIRCUIT = CIRCUIT 
 #        FIXFORM X-225 X5 X6 X13 X42 X4 X1 SBN/40
          CSR_CKT_tbl['SBN']=line[77:117]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
@@ -1125,8 +1131,8 @@ def process_COSUSOC_36():
  
 
     else:
-        Level = 'CO';
-#HOW TO PROCESS CIRCIUT?        CIRCUIT = CIRCUIT;
+        Level = 'CO'
+#HOW TO PROCESS CIRCIUT?        CIRCUIT = CIRCUIT 
 #        FIXFORM X-225 X5 X6 X13 X31
 #        FIXFORM COSDINSTCC/8 COSUSOCQTY/Z6 COSRES1/2 COS_USOC/5 X121
 #        FIXFORM COSRES2/6 X7 COSDACTCC/8 COSACT/1
@@ -1153,13 +1159,13 @@ def process_LOCUSOC_36():
     debug("****** procedure==>  "+whereami()+" ******")
     global CSR_USOC_tbl,Level,record_id, USOCCNT, UACT
     
-    global UCODE,USOCCNT, Level, record_id
+    global USOCCNT,UCODE,USOC_CNT, Level, record_id
  #USOC
     initialize_CSR_USOC_tbl()
-    USOCCNT = USOCCNT + 1;
-    USOC_CNT = USOCCNT;
-    UCODE = '  ';
-    Level = 'LU';
+    USOCCNT = USOCCNT + 1
+    USOC_CNT = USOCCNT
+    UCODE = '  '
+    Level = 'LU'
  
 #    FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X31
 #    FIXFORM UDINSTCC/8 QUSOC/Z6 USOCRES1/2 USOC/5 X121
@@ -1188,22 +1194,22 @@ def process_USOCDRVR_TAX():
     "151600"
     global x_tbl
     global CSR_USOC_tbl,Level,record_id, CSR_CKTUSOC_tbl, CSR_CKT_tbl
-    global USOC_CNT, UCODE, CUACT, CUSOCQTY, UACT
+    global USOC_CNT, UCODE, CUACT, CUSOCQTY, UACT, Level, CIRCUIT,COSACT
     
 #        FIXFORM X-225 X5 X6 X13 X31 X11 TUSOC/5 X121 X9
 #        FIXFORM X3 X2 X4 X1 X8
     TUSOC=line[72:77]
     if Level in ('L','LU'):
-#        GOTO LOCUSOC_TAX; logic below
+#        GOTO LOCUSOC_TAX  logic below
 #        -************************************************************
 #        -*  THIS CASE PROCESSES THE 1516 LOCATION Level USOCS FROM CASE CKTUSOC
 #        -*   IF Level EQUALS 'L' OR 'LU'
 #        -************************************************************
 #SEGMENT=USOCSEG        
-#        USOC_CNT = USOC_CNT;
-#        QUSOC = QUSOC;
-        UCODE = '  ';
-        Level = 'LU';
+#        USOC_CNT = USOC_CNT
+#        QUSOC = QUSOC
+        UCODE = '  '
+        Level = 'LU'
 #        FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X31 X11
 #        FIXFORM USOC/5 X121 USO_FEDTAX/1 USO_STTAX/1 USO_CITYTAX/1
 #        FIXFORM USO_CNTYTAX/1 USO_STSLSTAX/1 USO_LSLSTAX/1 USO_SURTAX/1
@@ -1222,7 +1228,7 @@ def process_USOCDRVR_TAX():
         CSR_USOC_tbl['INPUT_RECORDS']=str(record_id)
         
         if UACT == 'D':
-            pass #GOTO TOP;
+            pass #GOTO TOP
         else:
             process_update_table("CAIMS_CSR_USOC", CSR_USOC_tbl, CSR_USOC_DEFN_DICT)
 #            update record
@@ -1235,9 +1241,9 @@ def process_USOCDRVR_TAX():
 #        -*  UPDATES THE CKTUSOC SEGMENT. SET Level TO 'CU'.
 #        -*  CHECK TO SEE IF THIS IS A CIRCUIT Level RECORD OR LOCATION Level
 #        -************************************************************
-        Level = 'CU';
-        CUACT = CUACT;
-        CUSOCQTY = CUSOCQTY;
+        Level = 'CU'
+        CUACT = CUACT
+        CUSOCQTY = CUSOCQTY
 #        SEGMENT=CKTUSOC
 #        FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X31 X11
 #        FIXFORM CUSOC/5 X121 CU_FEDTAX/1 CU_STTAX/1 CU_CITYTAX/1
@@ -1257,7 +1263,7 @@ def process_USOCDRVR_TAX():
         CSR_CKTUSOC_tbl['INPUT_RECORDS']=str(record_id)
         
         if CUACT == 'D':
-            pass #GOTO TOP;
+            pass #GOTO TOP
         else:
             process_update_table("CAIMS_CSR_CKTUSOC", CSR_CKTUSOC_tbl, CSR_CKTUSOC_DEFN_DICT)
 #            update record
@@ -1270,9 +1276,9 @@ def process_USOCDRVR_TAX():
 #        -*  CHECK TO SEE IF THIS IS A CIRCUIT Level RECORD OR LOCATION Level
 #        -************************************************************
 #SEGMENT=CKTSEG
-        Level = 'CO';
-        CIRCUIT = CIRCUIT;
-        COSACT = COSACT;
+        Level = 'CO'
+        CIRCUIT = CIRCUIT
+        COSACT = COSACT
 #        FIXFORM X-225 X5 X6 X13 X31 X11
 #        FIXFORM COS_USOC/5 X121 COS_FEDTAX/1 COS_STTAX/1 COS_CITYTAX/1
 #        FIXFORM COS_CNTYTAX/1 COS_STSLSTAX/1 COS_LSLSTAX/1 COS_SURTAX/1
@@ -1303,22 +1309,23 @@ def process_USOCDRVR_PLN():
     global x_tbl
     global current_abbd_rec_key   
     global CSR_USOC_tbl, Level, record_id, CSR_CKTUSOC_tbl, CSR_CKT_tbl
+    global USOCCNT,USOC_CNT,UCODE
 #    FIXFORM X-225 X5 X6 X13 X31 X11 TUSOC/5 X26 X5 X5 X8 X8 X3
 #    FIXFORM X1 X5 X2 X1 X5 X26 X8 X1 X44    
     TUSOC=line[72:77]
     
     if Level in ('L','LU'):
-#        GOTO LOCUSOC_PLN;  logic below
+#        GOTO LOCUSOC_PLN  logic below
 #        -************************************************************
 #        -*  THIS CASE PROCESSES THE 1517 LOCATION Level USOCS FROM CASE CKTUSOC
 #        -*   IF Level EQUALS 'L' OR 'LU'
 #        -************************************************************
 #  SEGMENT=USOCSEG
     
-        USOC_CNT = USOC_CNT;
-        QUSOC = QUSOC;
-        UCODE = '  ';
-        Level = 'LU';
+        USOC_CNT = USOC_CNT 
+#        QUSOC = QUSOC 
+        UCODE = '  ' 
+        Level = 'LU' 
 #        FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X31 X11
 #        FIXFORM USOC/5 PLAN_ID/26 RQRD_PL_QTY/5 VAR_PL_QTY/5
 #        FIXFORM TRM_STRT_DAT/8 TRM_END_DAT/8 LNGTH_OF_TRM/3 PL_TYP_INDR/1
@@ -1343,7 +1350,7 @@ def process_USOCDRVR_PLN():
         CSR_USOC_tbl['INPUT_RECORDS']=str(record_id)
         
         if UACT == 'D':
-            pass #GOTO TOP;
+            pass #GOTO TOP
         else:
             process_update_table("CAIMS_CSR_USOC", CSR_USOC_tbl, CSR_USOC_DEFN_DICT)
 #            update record
@@ -1356,9 +1363,9 @@ def process_USOCDRVR_PLN():
 #        -*  CHECK TO SEE IF THIS IS A CIRCUIT Level RECORD OR LOCATION Level
 #        -************************************************************
 #SEGMENT=CKTUSOC
-        Level = 'CU';
-        CUACT = CUACT;
-        CUSOCQTY = CUSOCQTY;
+        Level = 'CU' 
+        CUACT = CUACT 
+        CUSOCQTY = CUSOCQTY 
 #        FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X31 X11
 #        FIXFORM CUSOC/5 CU_PLAN_ID/26 CU_RQRD_PL_QTY/5 CU_VAR_PL_QTY/5
 #        FIXFORM CU_TRM_STRT_DAT/8 CU_TRM_END_DAT/8 CU_LNGTH_OF_TRM/3
@@ -1399,9 +1406,9 @@ def process_USOCDRVR_PLN():
 #        -************************************************************
  
 #        SEGMENT=CKTSEG 
-        Level = 'CO';
-        CIRCUIT = CIRCUIT;
-        COSACT = COSACT;
+        Level = 'CO' 
+        CIRCUIT = CIRCUIT 
+        COSACT = COSACT 
 #        FIXFORM X-225 X5 X6 X13 X31 X11
 #        FIXFORM COS_USOC/5 CO_PLAN_ID/26 CO_RQRD_PL_QTY/5 CO_VAR_PL_QTY/5
 #        FIXFORM CO_TRM_STRT_DAT/8 CO_TRM_END_DAT/8 CO_LNGTH_OF_TRM/3
@@ -1429,7 +1436,7 @@ def process_USOCDRVR_PLN():
             
             
         if COSACT == 'D':
-            pass  #GOTO TOP;
+            pass  #GOTO TOP
         else:
             process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
 #            update data
@@ -1988,7 +1995,7 @@ def translate_TACCNT_FGRP(taccnt,tfgrp):
 #  TACCNT_FGRP=IF TACCNT EQ 'S' THEN DECODE TFGRP(
 #              'A' '1' 'B' '2' 'C' '3' 'D' '4' 'E' '5' 'G' '6'
 #              'L' '7' 'Q' '8' 'S' '9' 'T' 'Z' 'V' 'Y' ELSE '$') ELSE
-#              TACCNT;    
+#              TACCNT    
 #   
 def count_record(currec,unknownRec):
     global record_counts
@@ -2082,7 +2089,7 @@ def process_close_files():
     if debugOn:
         debug_log.close()
         
-    csr_input.close();
+    csr_input.close() 
     csr_BCCBSPL_log.close()
    
     

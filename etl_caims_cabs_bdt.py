@@ -109,7 +109,6 @@ pmntadj_rec=False
 adjmtdtl_rec=False
 crnt1_051200_rec=False
 crnt1_055000_rec=False
-crnt2_rec=False    
  
  
 "GLOBAL VARIABLES"     
@@ -147,7 +146,7 @@ def init():
   
     "OPEN FILES"
     "   CABS INPUT FILE"
-    bdt_input = open(fullname, "r");
+    bdt_input = open(fullname, "r")
     
     
 
@@ -210,9 +209,6 @@ def main():
     "text files"
     global bdt_input, bdt_BCCBBIL_log
     
-      
-    global BDT_column_names
- 
     
     global firstBillingRec
     firstBillingRec=True
@@ -379,9 +375,9 @@ def process_bill_records():
     elif record_id == '051301' and tstx != 'XX':     
         process_TYP05131_CRNT2()  
         
-    elif record_id in ('051400','051500','051600','055200','055300','055400'):  
+    elif record_id in ('051400','051500','051600','052500','055200','055300','055400','055800'):  
         process_TYP0514_SWSPLCHG()
-        
+ 
     elif record_id == '150500':
         process_TYP1505_PMNTADJ()
     
@@ -417,7 +413,7 @@ def reset_record_flags():
     "These flags are used to check if a record already exists for the current acna/ban/eob_date"
     "The first time a record is processed, if the count == 0, then an insert will be performed,"
     "else an update."
-    global root_rec,baldue_rec,swsplchg_rec,baldtl_rec,pmntadj_rec,adjmtdtl_rec,crnt1_051200_rec,crnt1_055000_rec,crnt2_rec
+    global root_rec,baldue_rec,swsplchg_rec,baldtl_rec,pmntadj_rec,adjmtdtl_rec,crnt1_051200_rec,crnt1_055000_rec
     global dispdtl_rec
     
     root_rec=False
@@ -428,7 +424,6 @@ def reset_record_flags():
     pmntadj_rec=False
     crnt1_051200_rec=False
     crnt1_055000_rec=False
-    crnt2_rec=False
    
     
 def process_TYP0101_ROOT():
@@ -436,7 +431,6 @@ def process_TYP0101_ROOT():
     global firstBillingRec
     global verno
     global BDT_BCCBBIL_tbl,  BDT_BCCBBIL_DEFN_DICT  
-    global currentRecordHasPrevBillMatch
     global root_rec
    
     
@@ -582,7 +576,6 @@ def process_TYP0513_CRNT2():
     debug("****** procedure==>  "+whereami()+"(record id:"+str(record_id)+") ******")
     global BDT_CRNT2_tbl 
     global BDT_CRNT2_DEFN_DICT 
-    global crnt2_rec 
     
     initialize_CRNT2_tbl()
     
@@ -625,13 +618,11 @@ def process_TYP0513_CRNT2():
         BDT_CRNT2_tbl['USGLO']=line[209:220]
         process_insert_table("CAIMS_BDT_CRNT2", BDT_CRNT2_tbl, BDT_CRNT2_DEFN_DICT)
     
-        crnt2_rec=True    
    
 def process_TYP05131_CRNT2():    
     debug("****** procedure==>  "+whereami()+" ******")
     global BDT_CRNT2_tbl 
     global BDT_CRNT2_DEFN_DICT 
-    global crnt2_rec 
     
     "Dont initialize.  Initialization was done in TYPE0513 para"
 #    initialize_CRNT2_tbl()
@@ -649,8 +640,7 @@ def process_TYP05131_CRNT2():
         process_insert_table("CAIMS_BDT_CRNT2", BDT_CRNT2_tbl, BDT_CRNT2_DEFN_DICT)
     else:
         process_ERROR_END("ERROR: Previous record should have been a 051300.")
-               
-    crnt2_rec=True       
+                  
     
 def process_TYP0514_SWSPLCHG():  
     debug("****** procedure==>  "+whereami()+"(record id:"+str(record_id)+") ******")
@@ -659,43 +649,70 @@ def process_TYP0514_SWSPLCHG():
     global swsplchg_rec 
     
     initialize_SWSPLCHG_tbl()
-    
-    if not root_rec or not baldue_rec:
-        writelog("ERROR???: Writing crnt2 record but missing parent records.")
-
-    BDT_SWSPLCHG_tbl['STATE_IND']=line[76:78]
-    BDT_SWSPLCHG_tbl['ST_LVLCC']=line[78:82]
-    BDT_SWSPLCHG_tbl['CHGFROMDTCC']=line[86:94]
-    BDT_SWSPLCHG_tbl['CHGTHRUDTCC']=line[94:102] 
-    BDT_SWSPLCHG_tbl['MAC_ACCTYP']=line[102:103]
-    BDT_SWSPLCHG_tbl['MAC_FACTYP']=line[103:104]
-    BDT_SWSPLCHG_tbl['MACIR']=line[104:115]
-    BDT_SWSPLCHG_tbl['MACIA']=line[115:126] 
-    if record_id in ('051400','051600','055200'):
-        BDT_SWSPLCHG_tbl['MACND']=0
-        BDT_SWSPLCHG_tbl['MACIRIA']=line[126:137]
-        BDT_SWSPLCHG_tbl['MACIAIA']=line[137:148]
-        BDT_SWSPLCHG_tbl['MACLOC']=line[148:159]
+  
+    state_ind=line[76:78]
+    if state_ind == 'XX':
+        pass
+    else:
         
-    if record_id in ('051500','055300'):
-        BDT_SWSPLCHG_tbl['MACND']=line[126:137]
-        BDT_SWSPLCHG_tbl['MACIRIA']=line[137:148]
-        BDT_SWSPLCHG_tbl['MACIAIA']=line[148:159]
-        BDT_SWSPLCHG_tbl['MACLOC']=line[159:170]
+        if not root_rec or not baldue_rec:
+            writelog("ERROR???: Writing crnt2 record but missing parent records.")
     
-    if record_id in ('051400','055200'):
-        BDT_SWSPLCHG_tbl['MAC_RECTYP']=14
-    elif record_id in ('051600','055400'):
-        BDT_SWSPLCHG_tbl['MAC_RECTYP']=16
-    elif record_id in ('051500','055300'):
-        BDT_SWSPLCHG_tbl['MAC_RECTYP']=15
- 
+    
+        BDT_SWSPLCHG_tbl['STATE_IND']=state_ind
+        BDT_SWSPLCHG_tbl['ST_LVLCC']=line[78:82]
+        BDT_SWSPLCHG_tbl['CHGFROMDTCC']=line[86:94]
+        BDT_SWSPLCHG_tbl['CHGTHRUDTCC']=line[94:102] 
+        
+        if record_id in ('052500','055800'):
+            BDT_SWSPLCHG_tbl['MAC_ACCTYP']='0'
+            BDT_SWSPLCHG_tbl['MAC_FACTYP']='0'
+            BDT_SWSPLCHG_tbl['MACIR']=line[102:113]
+            BDT_SWSPLCHG_tbl['MACIA']=line[113:124]
+            BDT_SWSPLCHG_tbl['MACIRIA']=line[124:135]
+            BDT_SWSPLCHG_tbl['MACIAIA']=line[135:146]
+            BDT_SWSPLCHG_tbl['MACLOC']=line[146:157]
+            BDT_SWSPLCHG_tbl['MACND']=line[157:168]
+            BDT_SWSPLCHG_tbl['MAC_RECTYP']=25
+        else:        
+            BDT_SWSPLCHG_tbl['MAC_ACCTYP']=line[102:103]
+            BDT_SWSPLCHG_tbl['MAC_FACTYP']=line[103:104]
+            BDT_SWSPLCHG_tbl['MACIR']=line[104:115]
+            BDT_SWSPLCHG_tbl['MACIA']=line[115:126]
+         
+        if record_id in ('051400','051600','055200'):
+            BDT_SWSPLCHG_tbl['MACND']=0
+            BDT_SWSPLCHG_tbl['MACIRIA']=line[126:137]
+            BDT_SWSPLCHG_tbl['MACIAIA']=line[137:148]
+            BDT_SWSPLCHG_tbl['MACLOC']=line[148:159]
+            
+        if record_id in ('051500','055300'):
+            BDT_SWSPLCHG_tbl['MACND']=line[126:137]
+            BDT_SWSPLCHG_tbl['MACIRIA']=line[137:148]
+            BDT_SWSPLCHG_tbl['MACIAIA']=line[148:159]
+            BDT_SWSPLCHG_tbl['MACLOC']=line[159:170]
+        
+        if record_id in ('051400','055200'):
+            BDT_SWSPLCHG_tbl['MAC_RECTYP']=14
+        elif record_id in ('051600','055400'):
+            BDT_SWSPLCHG_tbl['MAC_RECTYP']=16
+        elif record_id in ('051500','055300'):
+            BDT_SWSPLCHG_tbl['MAC_RECTYP']=15
+    
+    
+        BDT_SWSPLCHG_tbl['INPUT_RECORDS']=str(record_id)
+     
+        process_insert_table("CAIMS_BDT_SWSPLCHG", BDT_SWSPLCHG_tbl, BDT_SWSPLCHG_DEFN_DICT)
+        
+        swsplchg_rec=True
 
-    BDT_SWSPLCHG_tbl['INPUT_RECORDS']=str(record_id)
- 
-    process_insert_table("CAIMS_BDT_SWSPLCHG", BDT_SWSPLCHG_tbl, BDT_SWSPLCHG_DEFN_DICT)
+
     
-    swsplchg_rec=True
+
+
+
+
+
 
 def process_TYP1505_PMNTADJ():
     debug("****** procedure==>  "+whereami()+" ******")
@@ -793,12 +810,17 @@ def process_TYP20051_ADJMTDTL():
     
 def process_TYP2505_BALDTL():                
     debug("****** procedure==>  "+whereami()+" ******")
+    "250500"
     global BDT_BALDTL_tbl 
     global baldtl_rec
      
     initialize_BALDTL_tbl()    
     
      #DTL_INVOICE-concatenation of DINV_REF and DINV_DATE
+#FIXFORM X-225 ACNA/A5 EOB_DATE/6 BAN/A13 X13 X5 X2 X1 X6 X4
+#FIXFORM DINV_REF/A10 DINV_DATE/A5 DSTATE/A2 X38
+#FIXFORM DPREVBAL/Z11.2 DPAYMNT/Z11.2 DADJT/Z11.2 DBAL/Z11.2
+#FIXFORM X4 LPC_APPLIED/Z11.2
   
     
     BDT_BALDTL_tbl['DINV_REF']=line[61:71]
