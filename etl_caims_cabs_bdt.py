@@ -132,7 +132,7 @@ NEGATIVE_NUMS=['}','J','K','L','M','N','O','P','Q','R']
 
 def debug(msg):
     if debugOn:
-        bdt_debug_log.write("\n"+str(msg))
+        debug_log.write("\n"+str(msg))
 
 def whereami():
     return inspect.stack()[1][3]         
@@ -537,7 +537,7 @@ def process_TYP0512_CRNT1():
     
     initialize_CRNT1_tbl()
     
-    if not root_rec or not baldue_rec or not baldtl_rec:
+    if not root_rec or not baldue_rec:
         writelog("ERROR???: Writing CRNT1 record but missing parent records.")
  
    
@@ -1054,7 +1054,7 @@ def format_date(datestring):
     
 def process_insert_table(tbl_name, tbl_rec,tbl_dic):
     debug("****** procedure==>  "+whereami()+" ******")
-    
+     
     firstPart="INSERT INTO "+tbl_name+" (" #add columns
     secondPart=" VALUES ("  #add values
    
@@ -1065,19 +1065,19 @@ def process_insert_table(tbl_name, tbl_rec,tbl_dic):
 #             "EMPTY VALUE"
     
         try:
-            if tbl_dic[key] == 'STRING':
+            if tbl_dic[key] in ('c|STRING', 'x|STRING'):
                 firstPart+=key+","
                 if nulVal:
                     secondPart+="NULL,"
                 else:
                     secondPart+="'"+str(value).rstrip(' ')+"',"
-            elif tbl_dic[key] =='DATETIME':
+            elif tbl_dic[key] in ('c|DATETIME', 'x|DATETIME'):
                 firstPart+=key+","
                 if nulVal:
                     secondPart+="NULL,"
                 else:                    
                     secondPart+=format_date(value)+","
-            elif tbl_dic[key] =='NUMBER':
+            elif tbl_dic[key] in ('c|NUMBER','x|NUMBER'):
                 firstPart+=key+","
                 "RULE: if null/blank number, then populate with 0."
                 if nulVal:
@@ -1085,7 +1085,7 @@ def process_insert_table(tbl_name, tbl_rec,tbl_dic):
                 else:                    
                     secondPart+=str(convertnumber(value))+","                    
             else:
-                print "ERROR:" +tbl_dic[key]
+                process_ERROR_END("ERROR: "+whereami()+"procedure could not determine data type for " +tbl_dic[key] + " in the "+tbl_name+" table.") 
         except KeyError as e:
             writelog("WARNING: Column "+key+" not found in the "+tbl_name+" table.  Skipping.")
             writelog("KeyError:"+e.message)
@@ -1102,7 +1102,7 @@ def process_insert_table(tbl_name, tbl_rec,tbl_dic):
         writelog("SUCCESSFUL INSERT INTO "+tbl_name+".")
     except cx_Oracle.DatabaseError , e:
         if ("%s" % e.message).startswith('ORA-00001:'):
-            writelog("****** DUPLICATE INSERT INTO"+str(tbl_name)+"*****************")
+            writelog("****** DUPLICATE INSERT INTO "+str(tbl_name)+"*****************")
             writelog("Insert SQL: "+str(insSQL))
         else:
             writelog("ERROR:"+str(e.message))
@@ -1135,20 +1135,44 @@ def process_update_table(tbl_name, tbl_rec,tbl_dic):
                 whereClause+="EOB_DATE="+format_date(value)+" AND "
             elif key == 'BAN':
                 whereClause+="BAN='"+str(value).rstrip(' ')+"' AND "
-            elif tbl_dic[key] == 'STRING':
+            #####STRINGS##############
+            elif tbl_dic[key] == 'c|STRING':
                 if str(key) == 'INPUT_RECORDS':
                     updateSQL+="INPUT_RECORDS = INPUT_RECORDS||'*"+str(value).rstrip(' ')+"',"
                 elif not nulVal:
                     updateSQL+=str(key)+"='"+str(value).rstrip(' ')+"',"
-            elif tbl_dic[key] =='DATETIME':
+            elif tbl_dic[key] == 'x|STRING':
+                if nulVal:
+                    #problem ix value should not be null
+                    process_ERROR_END("ERROR: "+key+" is a unique index STRING/VARCHAR value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
+                else:
+                   whereClause+=str(key)+"='"+str(value).rstrip(' ')+"' AND "  
+                   
+            #####DATETIME#############
+            elif tbl_dic[key] =='c|DATETIME':
 #                print "date key and value:"+str(key)+" "+str(value)
                 if not nulVal:
-                    updateSQL+=str(key)+"="+format_date(value)+","                
-            elif tbl_dic[key] =='NUMBER':
+                    updateSQL+=str(key)+"="+format_date(value)+"," 
+            elif tbl_dic[key] =='x|DATETIME':
+                if nulVal:
+                    #problem ix value should not be null
+                    process_ERROR_END("ERROR: "+key+" is a unique index DATETIME value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
+                else:
+                   whereClause+=str(key)+"='"+format_date(value)+"' AND "  
+                   
+            #####NUMBERS#############               
+            elif tbl_dic[key] =='c|NUMBER':
                 if not nulVal:                   
                     updateSQL+=str(key)+"="+str(convertnumber(value))+","        
+            elif tbl_dic[key] =='x|NUMBER':        
+                if nulVal:
+                    #problem ix value should not be null
+                    process_ERROR_END("ERROR: "+key+" is a unique index NUMBER value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
+                else:
+                   whereClause+=str(key)+"='"+str(convertnumber(value))+"' AND "  
+                    
             else:
-                print "ERROR:" +tbl_dic[key]
+                process_ERROR_END("ERROR: process_update_table could not determine data type for " +tbl_dic[key] + " in the "+tbl_name+" table.")  
         except KeyError as e:
             writelog("WARNING: Column "+key+" not found in the "+tbl_name+" table.  Skipping.")
             writelog("KeyError:"+e.message)
@@ -1172,7 +1196,7 @@ def process_update_table(tbl_name, tbl_rec,tbl_dic):
             writelog("UPDATE SQL Causing problem:"+updateSQL)
     finally:
         updCurs.close()
-            
+                 
 
 
 def convertnumber(num) :
@@ -1239,20 +1263,58 @@ def getTableColumns(tablenm):
         
     return tmpArray  
  
- 
+def getUniqueKeyColumns(tablenm):
+    debug("****** procedure==>  "+whereami()+" ******")
+             
+    keyCurs=con.cursor()
+    myTbl=tablenm
+    
+    mySQL="SELECT column_name FROM USER_IND_COLUMNS WHERE INDEX_NAME IN (SELECT INDEX_NAME FROM USER_INDEXES WHERE TABLE_NAME ='"+myTbl+"' AND UNIQUENESS='UNIQUE')" 
+    colArray=[]
+    try:    
+        keyCurs.execute(mySQL)  
+        for x in keyCurs:
+            colArray.append(x)
+        con.commit()
+    except cx_Oracle.DatabaseError, e:
+        if ("%s" % e.message).startswith('ORA-:'):
+            writelog("ERROR:"+str(exc.message))
+            writelog("SQL causing problem:"+updateSQL)
+    finally:
+        keyCurs.close()
+        
+    return colArray  
  
 def createTableTypeDict(tablenm):
     debug("****** procedure==>  "+whereami()+" ******")
-               
+    #This Procedure retrieves table columsn and unique key columns
+    #-It iterates through and marks the column as either and x (index)
+    #-or a c (column).  This is then used in the update routine.  The
+    #Update table can then use the unique index fields in the where
+    #clause
+           
     colTypDict=collections.OrderedDict()
         
-    myArray=[]
-    myArray=getTableColumns(tablenm)
+    colArray=[]
+    colArray=getTableColumns(tablenm)
+    indexArray=[]
+    indexArray=getUniqueKeyColumns(tablenm)
      
-    for y in myArray:
-        colTypDict[y[0]]=str(y[1]).replace("<type 'cx_Oracle.",'').replace("'>",'') 
-
-    return colTypDict  
+    ixKeyFound=False
+    for tblCol in colArray:
+        for keyCol in indexArray:
+            if tblCol[0] == keyCol[0]:
+                #Index column found  "x" = unique index column
+                ixKeyFound=True
+                colTypDict[tblCol[0]]=str("x|")+str(tblCol[1]).replace("<type 'cx_Oracle.",'').replace("'>",'') 
+                break
+                
+        if not ixKeyFound:
+            colTypDict[tblCol[0]]=str("c|")+str(tblCol[1]).replace("<type 'cx_Oracle.",'').replace("'>",'') 
+        else:
+            ixKeyFound = False 
+        
+    return colTypDict 
          
 
     
@@ -1384,7 +1446,7 @@ def process_close_files():
     global bdt_BCCBBIL_log
     
     if debugOn:
-        bdt_debug_log.close()
+        debug_log.close()
         
     bdt_input.close();
     bdt_BCCBBIL_log.close()
