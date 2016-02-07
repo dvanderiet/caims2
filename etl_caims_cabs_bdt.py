@@ -36,8 +36,6 @@ REASON:
 """
 
 import datetime
-import inspect
-#import collections
 import collections
 startTM=datetime.datetime.now();
 import cx_Oracle
@@ -45,6 +43,10 @@ import sys
 import ConfigParser
 import platform
 import os
+
+###IMPORT COMMON/SHARED UTILITIES
+from etl_caims_cabs_utility import whereami, process_insert_table, process_update_table, writelog, \
+                                   createTableTypeDict,translate_TACCNT_FGRP  
 
 settings = ConfigParser.ConfigParser();
 settings.read('settings.ini')
@@ -55,15 +57,17 @@ con=cx_Oracle.connect(settings.get('OracleSettings','OraCAIMSUser'),settings.get
  
     
 "CONSTANTS"
+#Set Debug Trace Below - Set to trun to turn on
+DEBUGISON=True
+
 if str(platform.system()) == 'Windows': 
-    output_dir = settings.get('GlobalSettings','WINDOWS_LOG_DIR');
+    OUTPUT_DIR = settings.get('GlobalSettings','WINDOWS_LOG_DIR');
 else:
-    output_dir = settings.get('GlobalSettings','LINUX_LOG_DIR');
+    OUTPUT_DIR = settings.get('GlobalSettings','LINUX_LOG_DIR');
     
 #set to true to get debug statements
-debugOn=False
-if debugOn:
-    debug_log=open(os.path.join(output_dir,settings.get('BDTSettings','BDT_DEBUG_FILE_NM')),"w")
+if DEBUGISON:
+    DEBUG_LOG=open(os.path.join(OUTPUT_DIR,settings.get('BDTSettings','BDT_DEBUG_FILE_NM')),"w")
 
 
 
@@ -89,16 +93,12 @@ if str(platform.system()) == 'Windows':
 else:
     inputPath=settings.get('BDTSettings','LINUX_BDT_inDir') 
 
-fullname =os.path.join(inputPath,fileNm)
+IP_FILENM_AND_PATH =os.path.join(inputPath,fileNm)
 
-if os.path.isfile(fullname):
-    print ("Input file:"+fullname)
+if os.path.isfile(IP_FILENM_AND_PATH):
+    print ("Input file:"+IP_FILENM_AND_PATH)
 else:
-    raise Exception("ERROR: File not found:"+fullname)
-
-
-
-
+    raise Exception("ERROR: File not found:"+IP_FILENM_AND_PATH)
 
 root_rec=False
 baldue_rec=False
@@ -112,7 +112,7 @@ crnt1_055000_rec=False
  
  
 "GLOBAL VARIABLES"     
-record_id=''
+#record_id='123456'
 badKey=False
 current_abbd_rec_key={'ACNA':'x','EOB_DATE':'1','BAN':'x'}
 prev_abbd_rec_key={'ACNA':'XXX','EOB_DATE':'990101','BAN':'000'}   #EOB_DATE,ACNA,BAN key   
@@ -121,32 +121,27 @@ record_counts={}
 unknown_record_counts={}
 BILL_REC='10' 
 STAR_LINE='*********************************************************************************************'  
-MONTH_DICT={'01':'JAN','02':'FEB','03':'MAR','04':'APR','05':'MAY','06':'JUN','07':'JUL','08':'AUG','09':'SEP','10':'OCT','11':'NOV','12':'DEC',}
+
 #http://www.3480-3590-data-conversion.com/article-signed-fields.html
-DIGIT_DICT={'{':'0','A':'1','B':'2','C':'3','D':'4','E':'5','F':'6','G':'7','H':'8','I':'9',\
-            '}':'0','J':'1','K':'2','L':'3','M':'4','N':'5','O':'6','P':'7','Q':'8','R':'9'} 
-NEGATIVE_NUMS=['}','J','K','L','M','N','O','P','Q','R']
+
 
    
 "TRANSLATERS"
 
 def debug(msg):
-    if debugOn:
-        debug_log.write("\n"+str(msg))
-
-def whereami():
-    return inspect.stack()[1][3]         
+    if DEBUGISON:
+        DEBUG_LOG.write("\n"+str(msg))
+        
     
 def init():
     debug("****** procedure==>  "+whereami()+" ******")
     
     global bdt_input 
-    global bdt_BCCBBIL_log
-    global record_id
-  
+    global record_id,output_log
+ 
     "OPEN FILES"
     "   CABS INPUT FILE"
-    bdt_input = open(fullname, "r")
+    bdt_input = open(IP_FILENM_AND_PATH, "r")
     
     
 
@@ -161,24 +156,24 @@ def init():
     cycl_time=headerLine[12:21].replace('\n','')
 
     "  CREATE LOG FILE WITH CYCLE DATE FROM HEADER AND RUN TIME OF THIS JOB"
-    log_file=os.path.join(output_dir,"BDT_Cycle"+str(cycl_yy)+str(cycl_mmdd)+str(cycl_time)+"_"+startTM.strftime("%Y%m%d_@%H%M") +".txt")
+    log_file=os.path.join(OUTPUT_DIR,"BDT_Cycle"+str(cycl_yy)+str(cycl_mmdd)+str(cycl_time)+"_"+startTM.strftime("%Y%m%d_@%H%M") +".txt")
          
-    bdt_BCCBBIL_log = open(log_file, "w");
-    bdt_BCCBBIL_log.write("-BDT CAIMS ETL PROCESS-")
+    output_log=open(log_file, "w");
+    output_log.write("-BDT CAIMS ETL PROCESS-")
     
     if record_id not in settings.get('BDTSettings','BDTHDR'):
         process_ERROR_END("The first record in the input file was not a "+settings.get('BDTSettings','BDTHDR').rstrip(' ')+" record.")
 
-    writelog("Process "+sys.argv[0])
-    writelog("   started execution at: " + str(startTM))
-    writelog(STAR_LINE)
-    writelog(" ")
-    writelog("Input file: "+str(bdt_input))
-    writelog("Log file: "+str(bdt_BCCBBIL_log))
+    writelog("Process "+sys.argv[0],output_log)
+    writelog("   started execution at: " + str(startTM),output_log)
+    writelog(STAR_LINE,output_log)
+    writelog(" ",output_log)
+    writelog("Input file: "+str(bdt_input),output_log)
+    writelog("Log file: "+str(output_log),output_log)
     
     "Write header record informatio only"
-    writelog("Header Record Info:")
-    writelog("     Record ID: "+record_id+" YY: "+cycl_yy+", MMDD: "+cycl_mmdd+", TIME: "+str(cycl_time))
+    writelog("Header Record Info:",output_log)
+    writelog("     Record ID: "+record_id+" YY: "+cycl_yy+", MMDD: "+cycl_mmdd+", TIME: "+str(cycl_time),output_log)
     
     count_record(record_id,False)
     del headerLine,cycl_yy,cycl_mmdd,cycl_time
@@ -187,8 +182,9 @@ def main():
     debug("****** procedure==>  "+whereami()+" ******")
     #BDT_config.initialize_BDT() 
     global record_type
-    global line
+    global line,output_log
     global record_counts, unknown_record_counts
+
     "Counters"
 
 
@@ -207,7 +203,7 @@ def main():
     global BDT_ADJMTDTL_tbl,BDT_ADJMTDTL_DEFN_DICT
     
     "text files"
-    global bdt_input, bdt_BCCBBIL_log
+    global bdt_input
     
     
     global firstBillingRec
@@ -221,19 +217,19 @@ def main():
     
 #DECLARE TABLE ARRAYS AND DICTIONARIES
     BDT_BCCBBIL_tbl=collections.OrderedDict() 
-    BDT_BCCBBIL_DEFN_DICT=createTableTypeDict('CAIMS_BDT_BCCBBIL')
+    BDT_BCCBBIL_DEFN_DICT=createTableTypeDict('CAIMS_BDT_BCCBBIL',con,output_log)
     BDT_BALDTL_tbl=collections.OrderedDict()
-    BDT_BALDTL_DEFN_DICT=createTableTypeDict('CAIMS_BDT_BALDTL')
+    BDT_BALDTL_DEFN_DICT=createTableTypeDict('CAIMS_BDT_BALDTL',con,output_log)
     BDT_CRNT1_tbl=collections.OrderedDict()
-    BDT_CRNT1_DEFN_DICT=createTableTypeDict('CAIMS_BDT_CRNT1')  
+    BDT_CRNT1_DEFN_DICT=createTableTypeDict('CAIMS_BDT_CRNT1',con,output_log)  
     BDT_CRNT2_tbl=collections.OrderedDict()
-    BDT_CRNT2_DEFN_DICT=createTableTypeDict('CAIMS_BDT_CRNT2')
+    BDT_CRNT2_DEFN_DICT=createTableTypeDict('CAIMS_BDT_CRNT2',con,output_log)
     BDT_SWSPLCHG_tbl=collections.OrderedDict()
-    BDT_SWSPLCHG_DEFN_DICT=createTableTypeDict('CAIMS_BDT_SWSPLCHG')       
+    BDT_SWSPLCHG_DEFN_DICT=createTableTypeDict('CAIMS_BDT_SWSPLCHG',con,output_log)       
     BDT_PMNTADJ_tbl=collections.OrderedDict()
-    BDT_PMNTADJ_DEFN_DICT=createTableTypeDict('CAIMS_BDT_PMNTADJ')        
+    BDT_PMNTADJ_DEFN_DICT=createTableTypeDict('CAIMS_BDT_PMNTADJ',con,output_log)        
     BDT_ADJMTDTL_tbl=collections.OrderedDict()
-    BDT_ADJMTDTL_DEFN_DICT=createTableTypeDict('CAIMS_BDT_ADJMTDTL')         
+    BDT_ADJMTDTL_DEFN_DICT=createTableTypeDict('CAIMS_BDT_ADJMTDTL',con,output_log)         
          
 
     "COUNTERS"
@@ -245,6 +241,7 @@ def main():
     prev_abbd_rec_key={'ACNA':'XXX','EOB_DATE':'990101','BAN':'000'}
     
     "LOOP THROUGH INPUT CABS TEXT FILE"
+    #note variables in for line appear to be global
     for line in bdt_input:
       
         "Count each line"
@@ -274,7 +271,7 @@ def main():
             current_abbd_rec_key=process_getkey()
             if badKey:
                 count_record("BAD_ABD_KEY",True)
-                writelog("WARNING: BAD INPUT DATA.  ACNA="+current_abbd_rec_key['ACNA']+", BAN="+current_abbd_rec_key['BAN']+", EOB_DATE="+current_abbd_rec_key['EOB_DATE'])
+                writelog("WARNING: BAD INPUT DATA.  ACNA="+current_abbd_rec_key['ACNA']+", BAN="+current_abbd_rec_key['BAN']+", EOB_DATE="+current_abbd_rec_key['EOB_DATE'],output_log)
             else:
                 if current_abbd_rec_key != prev_abbd_rec_key:
                     BDT_KEY_cnt+=1
@@ -291,8 +288,8 @@ def main():
             
         else:
             "ERROR:Unidentified Record"
-            writelog("ERROR: Not sure what type of record this is:")
-            writelog(line)
+            writelog("ERROR: Not sure what type of record this is:",output_log)
+            writelog(line,output_log)
          
          
         prev_record_id=record_id
@@ -312,7 +309,7 @@ def main():
 #    system_mmdd=line[8:12]
 #    system_time=line[12:21]
 #    writelog("Input file: "+str(bdt_input))
-#    writelog("Log file: "+str(bdt_BCCBBIL_log))
+#    writelog("Log file: "+str(output_log))
 #    writelog("Header Record Info:")
 #    writelog("     Record ID: "+record_id+" YY: "+system_yy+", MMDD: "+system_mmdd+", TIME: "+str(system_time))
 #    
@@ -324,15 +321,15 @@ def main():
 
 def log_footer_rec_info(): 
     debug("****** procedure==>  "+whereami()+" ******")
-    global record_id
+    global record_id,output_log
     
     BAN_cnt=line[6:12]
     REC_cnt=line[13:22]
-    writelog(" ")
-    writelog("Footer Record Info:")
-    writelog("     Record ID "+record_id+" BAN Count: "+BAN_cnt+" RECORD CNT: "+REC_cnt)
-    writelog("The total number of lines counted in input file is : "+ str(inputLineCnt))
-    writelog(" ")
+    writelog(" ",output_log)
+    writelog("Footer Record Info:",output_log)
+    writelog("     Record ID "+record_id+" BAN Count: "+BAN_cnt+" RECORD CNT: "+REC_cnt,output_log)
+    writelog("The total number of lines counted in input file is : "+ str(inputLineCnt),output_log)
+    writelog(" ",output_log)
     
     count_record(record_id,False)
 
@@ -340,10 +337,11 @@ def log_footer_rec_info():
 
 def process_bill_records():
     debug("****** procedure==>  "+whereami()+" ******")
-    global BDT_BCCBBIL_tbl
-    global record_id
+#    global BDT_BCCBBIL_tbl
+    global record_id,output_log
     global firstBillingRec
     global tstx, verno, tsty
+   
     
     tstx=line[77:79]
     verno=line[82:84]
@@ -352,9 +350,9 @@ def process_bill_records():
     if firstBillingRec:
         "FIRST RECORD ONLY"
         #write BOS version number to log
-        writelog("**--------------------------**")
-        writelog("** BOS VERSION NUMBER IS "+verno+" ** ")
-        writelog("**--------------------------**")
+        writelog("**--------------------------**",output_log)
+        writelog("** BOS VERSION NUMBER IS "+verno+" ** ",output_log)
+        writelog("**--------------------------**",output_log)
         firstBillingRec=False
         
       
@@ -428,16 +426,17 @@ def reset_record_flags():
     
 def process_TYP0101_ROOT():
     debug("****** procedure==>  "+whereami()+" ******")
-    global firstBillingRec
+    global firstBillingRec,output_log
     global verno
-    global BDT_BCCBBIL_tbl,  BDT_BCCBBIL_DEFN_DICT  
-    global root_rec
+#    global BDT_BCCBBIL_tbl,  BDT_BCCBBIL_DEFN_DICT  
+    global root_rec, record_id
+    
    
     
     
     
     initialize_BCCBBIL_tbl()
-    "record_id doesn't need populated"
+#    "record_id doesn't need populated"
     
     "we already know ACNA, EOB_DATE, and BAN are the same"   
     BDT_BCCBBIL_tbl['JDATE']=line[71:76]
@@ -459,7 +458,7 @@ def process_TYP0101_ROOT():
     BDT_BCCBBIL_tbl['MPB']=line[224:225]
     BDT_BCCBBIL_tbl['INPUT_RECORDS']=str(record_id)
  
-    process_insert_table("CAIMS_BDT_BCCBBIL", BDT_BCCBBIL_tbl,BDT_BCCBBIL_DEFN_DICT)
+    process_insert_table("CAIMS_BDT_BCCBBIL", BDT_BCCBBIL_tbl,BDT_BCCBBIL_DEFN_DICT,con,output_log)
     
     root_rec=True
  
@@ -468,8 +467,9 @@ def process_TYP0505_BO_CODE():
     debug("****** procedure==>  "+whereami()+" ******")
     "BO_CODE"
     
-    global BDT_BCCBBIL_tbl  
-    global root_rec
+#    global BDT_BCCBBIL_tbl  
+    global root_rec, record_id,output_log
+    
   
     initialize_BCCBBIL_tbl()
     "record_id doesn't need populated"
@@ -482,19 +482,20 @@ def process_TYP0505_BO_CODE():
     
 #    process_update_bccbbil() 
     if root_rec:
-        process_update_table("CAIMS_BDT_BCCBBIL", BDT_BCCBBIL_tbl, BDT_BCCBBIL_DEFN_DICT)
+        process_update_table("CAIMS_BDT_BCCBBIL", BDT_BCCBBIL_tbl, BDT_BCCBBIL_DEFN_DICT,con,output_log)
     else:
 #        process_insert_table("CAIMS_BDT_BCCBBIL", BDT_BCCBBIL_tbl, BDT_BCCBBIL_DEFN_DICT)
-         process_ERROR_END("Trying to update BO_CODE but there is no root record. record_id: "+str(record_id))
+         process_ERROR_END("Trying to update BO_CODE but there is no root record. record_id: "+str(record_id),con)
          
     "no flag to set - part of root"
 
 def process_TYP0510_BALDUE():
     debug("****** procedure==>  "+whereami()+" ******")
     "BALDUE"   
-    global BDT_BCCBBIL_tbl 
-    global baldue_rec
-    global root_rec
+#    global BDT_BCCBBIL_tbl 
+    global baldue_rec,output_log
+    global root_rec, record_id
+  
  
     initialize_BCCBBIL_tbl()
 
@@ -522,7 +523,7 @@ def process_TYP0510_BALDUE():
 #    process_update_bccbbil() 
      
     if root_rec:
-        process_update_table("CAIMS_BDT_BCCBBIL", BDT_BCCBBIL_tbl, BDT_BCCBBIL_DEFN_DICT)
+        process_update_table("CAIMS_BDT_BCCBBIL", BDT_BCCBBIL_tbl, BDT_BCCBBIL_DEFN_DICT,con,output_log)
     else:
         process_ERROR_END("BALDUE record needs a root record. Record id:"+str(record_id))  
         
@@ -531,14 +532,16 @@ def process_TYP0510_BALDUE():
 
 def process_TYP0512_CRNT1():    
     debug("****** procedure==>  "+whereami()+"(record id:"+str(record_id)+") ******")
-    global BDT_CRNT1_tbl 
+#    global BDT_CRNT1_tbl 
     global BDT_CRNT1_DEFN_DICT 
-    global crnt1_051200_rec,crnt1_055000_rec
+    global crnt1_051200_rec,crnt1_055000_rec,output_log
+ 
+    #?not sure why record_id is recognized in this para when it is not declared global???
     
     initialize_CRNT1_tbl()
     
     if not root_rec or not baldue_rec:
-        writelog("ERROR???: Writing CRNT1 record but missing parent records.")
+        writelog("ERROR???: Writing CRNT1 record but missing parent records.",output_log)
  
    
 #    BDT_CRNT1_tbl
@@ -568,19 +571,21 @@ def process_TYP0512_CRNT1():
     
     BDT_CRNT1_tbl['INPUT_RECORDS']=str(record_id)
 
-    process_insert_table("CAIMS_BDT_CRNT1", BDT_CRNT1_tbl, BDT_CRNT1_DEFN_DICT)
+    process_insert_table("CAIMS_BDT_CRNT1", BDT_CRNT1_tbl, BDT_CRNT1_DEFN_DICT,con,output_log)
                
  
     
 def process_TYP0513_CRNT2():    
     debug("****** procedure==>  "+whereami()+"(record id:"+str(record_id)+") ******")
-    global BDT_CRNT2_tbl 
-    global BDT_CRNT2_DEFN_DICT 
+#    global BDT_CRNT2_tbl 
+#    global BDT_CRNT2_DEFN_DICT 
+    global output_log
+    #?not sure why record_id is recognized in this para when it is not declared global???    
     
     initialize_CRNT2_tbl()
     
     if not root_rec or not baldue_rec:
-        writelog("ERROR???: Writing crnt2 record but missing parent root record and baldue record.")
+        writelog("ERROR???: Writing crnt2 record but missing parent root record and baldue record.",output_log)
  
 #REF_NUM/A10=' ';
 #   FIXFORM X-225 ACNA/A5 EOB_DATE/6 BAN/A13 X5 X2 X6 X6 X12
@@ -616,13 +621,16 @@ def process_TYP0513_CRNT2():
         BDT_CRNT2_tbl['OCCLO']=line[178:189]
         BDT_CRNT2_tbl['STLVCC2']=line[205:209]
         BDT_CRNT2_tbl['USGLO']=line[209:220]
-        process_insert_table("CAIMS_BDT_CRNT2", BDT_CRNT2_tbl, BDT_CRNT2_DEFN_DICT)
+        process_insert_table("CAIMS_BDT_CRNT2", BDT_CRNT2_tbl, BDT_CRNT2_DEFN_DICT,con,output_log)
     
    
 def process_TYP05131_CRNT2():    
     debug("****** procedure==>  "+whereami()+" ******")
-    global BDT_CRNT2_tbl 
-    global BDT_CRNT2_DEFN_DICT 
+#    global BDT_CRNT2_tbl 
+#    global BDT_CRNT2_DEFN_DICT 
+    global output_log
+    #?not sure why record_id is recognized in this para when it is not declared global??? 
+
     
     "Dont initialize.  Initialization was done in TYPE0513 para"
 #    initialize_CRNT2_tbl()
@@ -637,16 +645,19 @@ def process_TYP05131_CRNT2():
     BDT_CRNT2_tbl['INPUT_RECORDS']+="*"+str(record_id)
     
     if prev_record_id == '051300':
-        process_insert_table("CAIMS_BDT_CRNT2", BDT_CRNT2_tbl, BDT_CRNT2_DEFN_DICT)
+        process_insert_table("CAIMS_BDT_CRNT2", BDT_CRNT2_tbl, BDT_CRNT2_DEFN_DICT,con,output_log)
     else:
         process_ERROR_END("ERROR: Previous record should have been a 051300.")
                   
     
 def process_TYP0514_SWSPLCHG():  
     debug("****** procedure==>  "+whereami()+"(record id:"+str(record_id)+") ******")
-    global BDT_SWSPLCHG_tbl       
-    global BDT_SWSPLCHG_DEFN_DICT 
+#    global BDT_SWSPLCHG_tbl       
+#    global BDT_SWSPLCHG_DEFN_DICT 
     global swsplchg_rec 
+    global output_log
+    
+    #?not sure why record_id is recognized in this para when it is not declared global???     
     
     initialize_SWSPLCHG_tbl()
   
@@ -656,7 +667,7 @@ def process_TYP0514_SWSPLCHG():
     else:
         
         if not root_rec or not baldue_rec:
-            writelog("ERROR???: Writing crnt2 record but missing parent records.")
+            writelog("ERROR???: Writing crnt2 record but missing parent records.",output_log)
     
     
         BDT_SWSPLCHG_tbl['STATE_IND']=state_ind
@@ -702,7 +713,7 @@ def process_TYP0514_SWSPLCHG():
     
         BDT_SWSPLCHG_tbl['INPUT_RECORDS']=str(record_id)
      
-        process_insert_table("CAIMS_BDT_SWSPLCHG", BDT_SWSPLCHG_tbl, BDT_SWSPLCHG_DEFN_DICT)
+        process_insert_table("CAIMS_BDT_SWSPLCHG", BDT_SWSPLCHG_tbl, BDT_SWSPLCHG_DEFN_DICT,con,output_log)
         
         swsplchg_rec=True
 
@@ -716,9 +727,11 @@ def process_TYP0514_SWSPLCHG():
 
 def process_TYP1505_PMNTADJ():
     debug("****** procedure==>  "+whereami()+" ******")
-    global BDT_PMNTADJ_tbl
+#    global BDT_PMNTADJ_tbl
     global pmntadj_rec
-    global BDT_PMNTADJ_DEFN_DICT
+#    global BDT_PMNTADJ_DEFN_DICT
+    global record_id
+    global output_log
 
 #FIXFORM X-225 ACNA/A5 EOB_DATE/6 BAN/A13 X5 X2 X6 X18
 #FIXFORM AINV_REF/A10 AINV_DATE/A5
@@ -737,14 +750,14 @@ def process_TYP1505_PMNTADJ():
     BDT_PMNTADJ_tbl['INPUT_RECORDS']=str(record_id)
     
 
-    process_insert_table("CAIMS_BDT_PMNTADJ", BDT_PMNTADJ_tbl, BDT_PMNTADJ_DEFN_DICT) 
+    process_insert_table("CAIMS_BDT_PMNTADJ", BDT_PMNTADJ_tbl, BDT_PMNTADJ_DEFN_DICT,con,output_log) 
 
     pmntadj_rec=True
 
 def process_TYP2005_ADJMTDTL():                    
     debug("****** procedure==>  "+whereami()+" ******")
-    global BDT_ADJMTDTL_tbl
-    global adjmtdtl_rec
+#    global BDT_ADJMTDTL_tbl
+    global adjmtdtl_rec, record_id
  
     
 #FIXFORM X-225 ACNA/A5 EOB_DATE/6 BAN/A13 X9 X8 ADJMT_SER_NO/10
@@ -773,9 +786,11 @@ def process_TYP2005_ADJMTDTL():
     
 def process_TYP20051_ADJMTDTL():
     debug("****** procedure==>  "+whereami()+" ******") 
-    global BDT_ADJMTDTL_tbl
+#    global BDT_ADJMTDTL_tbl
     global adjmtdtl_rec
-    global BDT_ADJMTDTL_DEFN_DICT
+#    global BDT_ADJMTDTL_DEFN_DICT
+    global record_id
+    global output_log
 #FIXFORM ON BCTFBDTI X91 ADJ_FACTYP/1 X3 PF_IND/1 X13
 #FIXFORM ADJ_FRDTCC/8 ADJ_THRUDTCC/8 CKT_ID/A47 X39 ADJ_ACCTYP/1
 #FIXFORM X2 BUS_RSDC_IND/A1 PF_BAND1/3 PF_BAND2/3
@@ -802,7 +817,7 @@ def process_TYP20051_ADJMTDTL():
     BDT_ADJMTDTL_tbl['INPUT_RECORDS']+="*"+str(record_id)
     
     if prev_record_id == '200500':
-        process_insert_table("CAIMS_BDT_ADJMTDTL", BDT_ADJMTDTL_tbl, BDT_ADJMTDTL_DEFN_DICT)
+        process_insert_table("CAIMS_BDT_ADJMTDTL", BDT_ADJMTDTL_tbl, BDT_ADJMTDTL_DEFN_DICT,con,output_log)
     else:
         process_ERROR_END("ERROR: previous record should have been a 200500.")
                
@@ -813,7 +828,9 @@ def process_TYP2505_BALDTL():
     "250500"
     global BDT_BALDTL_tbl 
     global baldtl_rec
-     
+    global record_id
+    global output_log
+    
     initialize_BALDTL_tbl()    
     
      #DTL_INVOICE-concatenation of DINV_REF and DINV_DATE
@@ -834,9 +851,9 @@ def process_TYP2505_BALDTL():
     BDT_BALDTL_tbl['INPUT_RECORDS']=str(record_id)
     
     if baldue_rec:
-        process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT) 
+        process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,output_log) 
     else:
-        writelog("WARNING: The BALDTL record "+str(record_id)+" has no associated BALDUE record.")
+        writelog("WARNING: The BALDTL record "+str(record_id)+" has no associated BALDUE record.",output_log)
     
     baldtl_rec=True
 
@@ -845,7 +862,8 @@ def process_TYP2505_BALDTL():
      
 def initialize_BDT_ADJMTDTL_tbl():            
     debug("****** procedure==>  "+whereami()+" ******")
-    global BDT_ADJMTDTL_tbl
+#    global BDT_ADJMTDTL_tbl
+    global current_abbd_rec_key 
     
 
     BDT_ADJMTDTL_tbl['ACNA']=current_abbd_rec_key['ACNA']
@@ -883,7 +901,8 @@ def initialize_BDT_ADJMTDTL_tbl():
  
 def initialize_PMNTADJ_tbl():            
     debug("****** procedure==>  "+whereami()+" ******")
-    global BDT_PMNTADJ_tbl
+#    global BDT_PMNTADJ_tbl,
+    global current_abbd_rec_key
    
     BDT_PMNTADJ_tbl['ACNA']=current_abbd_rec_key['ACNA']
     BDT_PMNTADJ_tbl['EOB_DATE']=current_abbd_rec_key['EOB_DATE']
@@ -902,7 +921,8 @@ def initialize_PMNTADJ_tbl():
      
 def initialize_BALDTL_tbl():
     debug("****** procedure==>  "+whereami()+" ******")
-    global BDT_BALDTL_tbl
+#    global BDT_BALDTL_tbl,
+    global current_abbd_rec_key
 
     BDT_BALDTL_tbl['ACNA']=current_abbd_rec_key['ACNA']
     BDT_BALDTL_tbl['EOB_DATE']=current_abbd_rec_key['EOB_DATE']
@@ -922,7 +942,7 @@ def initialize_BALDTL_tbl():
 
 def  initialize_BCCBBIL_tbl():
     debug("****** procedure==>  "+whereami()+" ******")
-    global BDT_BCCBBIL_tbl
+#    global BDT_BCCBBIL_tbl,
     global current_abbd_rec_key 
     
     BDT_BCCBBIL_tbl['ACNA']=current_abbd_rec_key['ACNA']    
@@ -962,7 +982,7 @@ def  initialize_BCCBBIL_tbl():
     
 def  initialize_CRNT1_tbl():
     debug("****** procedure==>  "+whereami()+" ******")
-    global BDT_CRNT1_tbl
+#    global BDT_CRNT1_tbl
     global current_abbd_rec_key 
     
     BDT_CRNT1_tbl['ACNA']=current_abbd_rec_key['ACNA']    
@@ -985,7 +1005,7 @@ def  initialize_CRNT1_tbl():
     
 def  initialize_CRNT2_tbl():
     debug("****** procedure==>  "+whereami()+" ******")
-    global BDT_CRNT2_tbl
+#    global BDT_CRNT2_tbl, 
     global current_abbd_rec_key 
     
     BDT_CRNT2_tbl['ACNA']=current_abbd_rec_key['ACNA']    
@@ -1014,7 +1034,7 @@ def  initialize_CRNT2_tbl():
 
 def  initialize_SWSPLCHG_tbl():
     debug("****** procedure==>  "+whereami()+" ******")
-    global BDT_SWSPLCHG_tbl
+#    global BDT_SWSPLCHG_tbl,
     global current_abbd_rec_key 
     
     BDT_SWSPLCHG_tbl['ACNA']=current_abbd_rec_key['ACNA']    
@@ -1035,328 +1055,9 @@ def  initialize_SWSPLCHG_tbl():
     BDT_SWSPLCHG_tbl['MAC_RECTYP']=''
     BDT_SWSPLCHG_tbl['MACND']=''
     BDT_SWSPLCHG_tbl['INPUT_RECORDS']=''
-
-
-
-def format_date(datestring):
-    debug("****** procedure==>  "+whereami()+" ******")
-    dtSize=len(datestring)
-    
-    if dtSize ==5:
-        #jdate conversion
-        return "TO_DATE('"+datestring+"','YY-DDD')"
-    elif dtSize==6:
-        return "TO_DATE('"+datestring[4:6]+"-"+MONTH_DICT[datestring[2:4]]+"-"+"20"+datestring[:2]+"','DD-MON-YY')"  
-    elif dtSize==8:
-        return "TO_DATE('"+datestring[:4]+"-"+datestring[4:6]+"-"+"20"+datestring[6:2]+"','YYYY-MM-DD')"     
  
- 
-    
-def process_insert_table(tbl_name, tbl_rec,tbl_dic):
-    debug("****** procedure==>  "+whereami()+" ******")
-     
-    firstPart="INSERT INTO "+tbl_name+" (" #add columns
-    secondPart=" VALUES ("  #add values
-   
-    for key, value in tbl_rec.items() :
-        nulVal=False
-        if str(value).rstrip(' ') == '':
-            nulVal=True
-#             "EMPTY VALUE"
-    
-        try:
-            if tbl_dic[key] in ('c|STRING', 'x|STRING'):
-                firstPart+=key+","
-                if nulVal:
-                    secondPart+="NULL,"
-                else:
-                    secondPart+="'"+str(value).rstrip(' ')+"',"
-            elif tbl_dic[key] in ('c|DATETIME', 'x|DATETIME'):
-                firstPart+=key+","
-                if nulVal:
-                    secondPart+="NULL,"
-                else:                    
-                    secondPart+=format_date(value)+","
-            elif tbl_dic[key] in ('c|NUMBER','x|NUMBER'):
-                firstPart+=key+","
-                "RULE: if null/blank number, then populate with 0."
-                if nulVal:
-                    secondPart+="0,"
-                else:                    
-                    secondPart+=str(convertnumber(value))+","                    
-            else:
-                process_ERROR_END("ERROR: "+whereami()+"procedure could not determine data type for " +tbl_dic[key] + " in the "+tbl_name+" table.") 
-        except KeyError as e:
-            writelog("WARNING: Column "+key+" not found in the "+tbl_name+" table.  Skipping.")
-            writelog("KeyError:"+e.message)
- 
-    firstPart=firstPart.rstrip(',')+")"     
-    secondPart=secondPart.rstrip(',') +")"      
-     
-    insCurs=con.cursor()
-    insSQL=firstPart+secondPart
-
-    try:
-        insCurs.execute(insSQL) 
-        con.commit()
-        writelog("SUCCESSFUL INSERT INTO "+tbl_name+".")
-    except cx_Oracle.DatabaseError , e:
-        if ("%s" % e.message).startswith('ORA-00001:'):
-            writelog("****** DUPLICATE INSERT INTO "+str(tbl_name)+"*****************")
-            writelog("Insert SQL: "+str(insSQL))
-        else:
-            writelog("ERROR:"+str(e.message))
-            writelog("SQL causing problem:"+insSQL)
-    finally:
-        insCurs.close()
-   
-   
-        
-def process_update_table(tbl_name, tbl_rec,tbl_dic):
-    debug("****** procedure==>  "+whereami()+" ******")
-
-    "ASSUMPTIONS!!!"
-    "THis code assumes that if a value is null that it does not update the ORacle table."
-    "Need to make a code change if that rule is not true"
-    
-    updateSQL="UPDATE "+tbl_name+" SET " #add columns
-    whereClause="WHERE "
-
-    for key, value in tbl_rec.items() :
-      
-        nulVal=False
-        if str(value).rstrip(' ') == '':
-            nulVal=True
-               
-        try:
-            if key == 'ACNA':
-                whereClause+="ACNA='"+str(value).rstrip(' ')+"' AND "
-            elif key == 'EOB_DATE':
-                whereClause+="EOB_DATE="+format_date(value)+" AND "
-            elif key == 'BAN':
-                whereClause+="BAN='"+str(value).rstrip(' ')+"' AND "
-            #####STRINGS##############
-            elif tbl_dic[key] == 'c|STRING':
-                if str(key) == 'INPUT_RECORDS':
-                    updateSQL+="INPUT_RECORDS = INPUT_RECORDS||'*"+str(value).rstrip(' ')+"',"
-                elif not nulVal:
-                    updateSQL+=str(key)+"='"+str(value).rstrip(' ')+"',"
-            elif tbl_dic[key] == 'x|STRING':
-                if nulVal:
-                    #problem ix value should not be null
-                    process_ERROR_END("ERROR: "+key+" is a unique index STRING/VARCHAR value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
-                else:
-                   whereClause+=str(key)+"='"+str(value).rstrip(' ')+"' AND "  
-                   
-            #####DATETIME#############
-            elif tbl_dic[key] =='c|DATETIME':
-#                print "date key and value:"+str(key)+" "+str(value)
-                if not nulVal:
-                    updateSQL+=str(key)+"="+format_date(value)+"," 
-            elif tbl_dic[key] =='x|DATETIME':
-                if nulVal:
-                    #problem ix value should not be null
-                    process_ERROR_END("ERROR: "+key+" is a unique index DATETIME value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
-                else:
-                   whereClause+=str(key)+"='"+format_date(value)+"' AND "  
-                   
-            #####NUMBERS#############               
-            elif tbl_dic[key] =='c|NUMBER':
-                if not nulVal:                   
-                    updateSQL+=str(key)+"="+str(convertnumber(value))+","        
-            elif tbl_dic[key] =='x|NUMBER':        
-                if nulVal:
-                    #problem ix value should not be null
-                    process_ERROR_END("ERROR: "+key+" is a unique index NUMBER value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
-                else:
-                   whereClause+=str(key)+"='"+str(convertnumber(value))+"' AND "  
-                    
-            else:
-                process_ERROR_END("ERROR: process_update_table could not determine data type for " +tbl_dic[key] + " in the "+tbl_name+" table.")  
-        except KeyError as e:
-            writelog("WARNING: Column "+key+" not found in the "+tbl_name+" table.  Skipping.")
-            writelog("KeyError:"+e.message)
-                
-    whereClause=whereClause.rstrip(' ').rstrip('AND')
-    updateSQL=updateSQL.rstrip(',')
-        
-    updCurs=con.cursor()
-    updateSQL+=" "+whereClause
- 
-    try:
-        updCurs.execute(updateSQL) 
-#        print "Number of rows updated: " + updCurs.count??????
-        con.commit()
-        writelog("SUCCESSFUL UPDATE TO  "+tbl_name+".")
-        writelog("SUCCESSFUL INSERT INTO "+tbl_name+".")
-        
-    except cx_Oracle.DatabaseError, e:
-        if ("%s" % e.message).startswith('ORA-:'):
-            writelog("ERROR:"+str(exc.message))
-            writelog("UPDATE SQL Causing problem:"+updateSQL)
-    finally:
-        updCurs.close()
-                 
-
-
-def convertnumber(num) :
-    debug("****** procedure==>  "+whereami()+" ******")
-    global record_id
-    "this procedure assumes 2 decimal places"
-#   0000022194F
-#   0000000000{
-#   00000000000
-#    writelog("number in :"+str(num))
-    newNum= str(num).lstrip('0')
-    
-    if newNum == '{' or newNum == '' or newNum.rstrip(' ') == '':
-        return "0"
-    elif newNum.isdigit():
-#        writelog("number out: "+newNum[:len(str(newNum))-2]+"."+newNum[len(str(newNum))-2:len(str(newNum))])
-        return newNum[:len(str(newNum))-2]+"."+newNum[len(str(newNum))-2:len(str(newNum))]
-#        eg 98765
-#        return 987.65
-    elif len(str(newNum)) == 1:
-        hundredthsPlaceSymbol=DIGIT_DICT[str(newNum)]
-        if hundredthsPlaceSymbol in NEGATIVE_NUMS:
-            return "-0.0"+hundredthsPlaceSymbol
-        else:
-            return "0.0"+hundredthsPlaceSymbol
-        
-    elif str(newNum[:len(newNum)-1]).isdigit():
-        leftPart=str(newNum)[:len(str(newNum))-2]+"."
-        right2=newNum[len(str(newNum))-2:len(str(newNum))]
-
-        tensPlace=right2[:1]
-        hundredthsPlaceSymbol=right2[1:2] 
-        #convert last place non numeric digit to a number
-        hundredthsPlace= DIGIT_DICT[hundredthsPlaceSymbol]
-#        writelog("number out: "+leftPart+tensPlace+hundredthsPlace)
-        if hundredthsPlaceSymbol in NEGATIVE_NUMS:
-            return "-"+leftPart+tensPlace+hundredthsPlace
-        else:
-            return leftPart+tensPlace+hundredthsPlace
-        #everything numeric except last digit
-    else:
-        process_ERROR_END("ERROR: Cant Convert Number: "+str(num) +"   from line:"+str(line))
-
-
-
-def getTableColumns(tablenm):
-    debug("****** procedure==>  "+whereami()+" ******")
-             
-    myCurs=con.cursor()
-    myTbl=tablenm
-    mySQL="select * FROM %s WHERE ROWNUM=1" % (myTbl)
-    tmpArray=[]
-    try:    
-        myCurs.execute(mySQL)  
-        for x in myCurs.description:
-            tmpArray.append(x)
-        con.commit()
-    except cx_Oracle.DatabaseError, e:
-        if ("%s" % e.message).startswith('ORA-:'):
-            writelog("ERROR:"+str(exc.message))
-            writelog("SQL causing problem:"+updateSQL)
-    finally:
-        myCurs.close()
-        
-    return tmpArray  
- 
-def getUniqueKeyColumns(tablenm):
-    debug("****** procedure==>  "+whereami()+" ******")
-             
-    keyCurs=con.cursor()
-    myTbl=tablenm
-    
-    mySQL="SELECT column_name FROM USER_IND_COLUMNS WHERE INDEX_NAME IN (SELECT INDEX_NAME FROM USER_INDEXES WHERE TABLE_NAME ='"+myTbl+"' AND UNIQUENESS='UNIQUE')" 
-    colArray=[]
-    try:    
-        keyCurs.execute(mySQL)  
-        for x in keyCurs:
-            colArray.append(x)
-        con.commit()
-    except cx_Oracle.DatabaseError, e:
-        if ("%s" % e.message).startswith('ORA-:'):
-            writelog("ERROR:"+str(exc.message))
-            writelog("SQL causing problem:"+updateSQL)
-    finally:
-        keyCurs.close()
-        
-    return colArray  
- 
-def createTableTypeDict(tablenm):
-    debug("****** procedure==>  "+whereami()+" ******")
-    #This Procedure retrieves table columsn and unique key columns
-    #-It iterates through and marks the column as either and x (index)
-    #-or a c (column).  This is then used in the update routine.  The
-    #Update table can then use the unique index fields in the where
-    #clause
-           
-    colTypDict=collections.OrderedDict()
-        
-    colArray=[]
-    colArray=getTableColumns(tablenm)
-    indexArray=[]
-    indexArray=getUniqueKeyColumns(tablenm)
-     
-    ixKeyFound=False
-    for tblCol in colArray:
-        for keyCol in indexArray:
-            if tblCol[0] == keyCol[0]:
-                #Index column found  "x" = unique index column
-                ixKeyFound=True
-                colTypDict[tblCol[0]]=str("x|")+str(tblCol[1]).replace("<type 'cx_Oracle.",'').replace("'>",'') 
-                break
-                
-        if not ixKeyFound:
-            colTypDict[tblCol[0]]=str("c|")+str(tblCol[1]).replace("<type 'cx_Oracle.",'').replace("'>",'') 
-        else:
-            ixKeyFound = False 
-        
-    return colTypDict 
-         
-
-    
-"########################################################################################################################"
-"####################################TRANSLATION MODULES#################################################################"
-
-def translate_TACCNT_FGRP(taccnt,tfgrp):
-    debug("****** procedure==>  "+whereami()+" ******")    
-    
-    if taccnt.rstrip(' ')=='S':
-        if tfgrp.rstrip(' ') == 'A':
-            return '1'
-        elif tfgrp.rstrip(' ') == 'B':
-            return '2'
-        elif tfgrp.rstrip(' ') == 'C':
-            return '3'  
-        elif tfgrp.rstrip(' ') == 'D':
-            return '4'            
-        elif tfgrp.rstrip(' ') == 'E':
-            return '5'            
-        elif tfgrp.rstrip(' ') == 'G':
-            return '6'            
-        elif tfgrp.rstrip(' ') == 'L':
-            return '7'            
-        elif tfgrp.rstrip(' ') == 'Q':
-            return '8'            
-        elif tfgrp.rstrip(' ') == 'S':
-            return '9'            
-        elif tfgrp.rstrip(' ') == 'T':
-            return 'Z'            
-        elif tfgrp.rstrip(' ') == 'V':
-            return 'Y'            
-        else:
-            return taccnt.rstrip(' ')
-    else:
-        return tfgrp.rstrip(' ')
-#  TACCNT_FGRP=IF TACCNT EQ 'S' THEN DECODE TFGRP(
-#              'A' '1' 'B' '2' 'C' '3' 'D' '4' 'E' '5' 'G' '6'
-#              'L' '7' 'Q' '8' 'S' '9' 'T' 'Z' 'V' 'Y' ELSE '$') ELSE
-#              TACCNT;    
-#   
 def count_record(currec,unknownRec):
+    debug("****** procedure==>  "+whereami()+" ******")  
     global record_counts
     global unknown_record_counts
 
@@ -1370,70 +1071,54 @@ def count_record(currec,unknownRec):
             record_counts[str(currec).rstrip(' ')]+=1
         else:
             record_counts[str(currec).rstrip(' ')]=1 
-    
-    
-
-"####################################TRANSLATION MODULES END ############################################################"    
-"########################################################################################################################" 
 
    
 def process_write_program_stats():
     debug("****** procedure==>  "+whereami()+" ******")
-    global record_counts
-    global unknown_record_counts
-    global BDT_KEY_cnt
-    writelog("\n")
+    global record_counts, unknown_record_counts, BDT_KEY_cnt
+    global output_log
+    writelog("\n",output_log)
     
     idCnt=0
-    writelog("**")
-    writelog("**Processed record IDs and counts**")
-    writelog("record_id, count")
+    writelog("**",output_log)
+    writelog("**Processed record IDs and counts**",output_log)
+    writelog("record_id, count",output_log)
     
     keylist = record_counts.keys()
     keylist.sort()
     for key in keylist:
 #        print "%s: %s" % (key, record_counts[key])   
-        writelog(str(key)+", "+str(record_counts[key]))   
+        writelog(str(key)+", "+str(record_counts[key]),output_log)   
         idCnt+=record_counts[key]       
 #    for key, value in record_counts.items():
 #        writelog(str(key)+", "+str(value))   
 #        idCnt+=value
-    writelog("\n  Total count: "+str(idCnt))
-    writelog(" ")
-    writelog("**")
+    writelog("\n  Total count: "+str(idCnt),output_log)
+    writelog(" ",output_log)
+    writelog("**",output_log)
     unkCnt=0
-    writelog( "There are "+str(len(unknown_record_counts))+" different record ID types not processed: ")    
-    writelog("**UNKNOWN record IDs and counts**")
-    writelog("record_id, count")
+    writelog( "There are "+str(len(unknown_record_counts))+" different record ID types not processed: ",output_log)    
+    writelog("**UNKNOWN record IDs and counts**",output_log)
+    writelog("record_id, count",output_log)
 
     keylist = unknown_record_counts.keys()
     keylist.sort()
     for key in keylist:
 #        print "%s: %s" % (key, record_counts[key])   
-        writelog(str(key)+", "+str(unknown_record_counts[key]))   
+        writelog(str(key)+", "+str(unknown_record_counts[key]),output_log)   
         unkCnt+=unknown_record_counts[key]  
     
+    writelog("\n  Total count: "+str(unkCnt),output_log)    
+    writelog("**",output_log)    
     
-#    for key, value in unknown_record_counts.items():
-#        writelog(str(key)+", "+str(value))
-#        unkCnt+=value
-    writelog("\n  Total count: "+str(unkCnt))    
-    writelog("**")    
-    
-    writelog("TOTAL ACNA/EOB_DATE/BAN's processed:"+str(BDT_KEY_cnt))
-    writelog(" ")
-    writelog("Total input records read from input file:"+str(idCnt+unkCnt))
-    writelog(" ")    
+    writelog("TOTAL ACNA/EOB_DATE/BAN's processed:"+str(BDT_KEY_cnt),output_log)
+    writelog(" ",output_log)
+    writelog("Total input records read from input file:"+str(idCnt+unkCnt),output_log)
+    writelog(" ",output_log)    
  
     
-def writelog(msg):
-    debug("****** procedure==>  "+whereami()+" ******")
-    global bdt_BCCBBIL_log
-    
-    bdt_BCCBBIL_log.write("\n"+msg)
-
-
 def process_ERROR_END(msg):
+    debug("****** procedure==>  "+whereami()+" ******")
     writelog("ERROR:"+msg)
     debug("ERROR:"+msg)
     process_close_files()
@@ -1443,19 +1128,19 @@ def process_ERROR_END(msg):
 def process_close_files():
     debug("****** procedure==>  "+whereami()+" ******")
     global bdt_input
-    global bdt_BCCBBIL_log
+    global output_log
     
-    if debugOn:
-        debug_log.close()
+    if DEBUGISON:
+        DEBUG_LOG.close()
         
     bdt_input.close();
-    bdt_BCCBBIL_log.close()
+    output_log.close()
    
     
     
 def endProg(msg):
     debug("****** procedure==>  "+whereami()+" ******")
- 
+    global output_log
  
     con.commit()
     con.close()
@@ -1464,10 +1149,10 @@ def endProg(msg):
      
     endTM=datetime.datetime.now()
     print "\nTotal run time:  %s" % (endTM-startTM)
-    writelog("\nTotal run time:  %s" % (endTM-startTM))
+    writelog("\nTotal run time:  %s" % (endTM-startTM),output_log)
      
 
-    writelog("\n"+msg)
+    writelog("\n"+msg,output_log)
      
     process_close_files()
 

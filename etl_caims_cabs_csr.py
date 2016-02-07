@@ -36,8 +36,6 @@ REASON:
 """
 
 import datetime
-import inspect
-#import collections
 import collections
 startTM=datetime.datetime.now()
 import cx_Oracle
@@ -46,24 +44,32 @@ import ConfigParser
 import os
 import platform
 
+
+###IMPORT COMMON/SHARED UTILITIES
+from etl_caims_cabs_utility import whereami, process_insert_table, process_update_table, writelog, \
+                                   createTableTypeDict,translate_TACCNT_FGRP  
+
+
+
+
 settings = ConfigParser.ConfigParser()
 settings.read('settings.ini')
 settings.sections()
 
 "SET ORACLE CONNECTION"
 con=cx_Oracle.connect(settings.get('OracleSettings','OraCAIMSUser'),settings.get('OracleSettings','OraCAIMSPw'),settings.get('OracleSettings','OraCAIMSSvc'))
- 
-    
-"CONSTANTS"
-if str(platform.system()) == 'Windows': 
-    output_dir = settings.get('GlobalSettings','WINDOWS_LOG_DIR')
-else:
-    output_dir = settings.get('GlobalSettings','LINUX_LOG_DIR')
 
-#set to true to get debug statements
-debugOn=False
-if debugOn:
-    debug_log=open(os.path.join(output_dir,settings.get('CSRSettings','CSR_DEBUG_FILE_NM')),"w")
+"CONSTANTS"
+#Set Debug Trace Below - Set to trun to turn on
+DEBUGISON=True
+
+if str(platform.system()) == 'Windows': 
+    OUTPUT_DIR = settings.get('GlobalSettings','WINDOWS_LOG_DIR');
+else:
+    OUTPUT_DIR = settings.get('GlobalSettings','LINUX_LOG_DIR');    
+ 
+if DEBUGISON:
+    DEBUG_LOG=open(os.path.join(OUTPUT_DIR,settings.get('CSRSettings','CSR_DEBUG_FILE_NM')),"w")
 
 
 #SET FILE NAME AND PATH
@@ -89,12 +95,12 @@ if str(platform.system()) == 'Windows':
 else:
     inputPath=settings.get('CSRSettings','LINUX_CSR_inDir') 
 
-fullname =os.path.join(inputPath,fileNm)
+IP_FILENM_AND_PATH =os.path.join(inputPath,fileNm)
 
-if os.path.isfile(fullname):
-    print ("Input file:"+fullname)
+if os.path.isfile(IP_FILENM_AND_PATH):
+    print ("Input file:"+IP_FILENM_AND_PATH)
 else:
-    raise Exception("ERROR: File not found:"+fullname)
+    raise Exception("ERROR: File not found:"+IP_FILENM_AND_PATH)
 
 
 USOCCNT = 0
@@ -115,7 +121,7 @@ crnt1_055000_rec=False
 crnt2_rec=False    
  
  
-"GLOBAL VARIABLES"     
+"GLOBAL VARIABLES"   
 record_id=''
 badKey=False
 current_abbd_rec_key={'ACNA':'x','EOB_DATE':'1','BAN':'x'}
@@ -125,32 +131,25 @@ record_counts={}
 unknown_record_counts={}
 CSR_REC='40' 
 STAR_LINE='*********************************************************************************************'  
-MONTH_DICT={'01':'JAN','02':'FEB','03':'MAR','04':'APR','05':'MAY','06':'JUN','07':'JUL','08':'AUG','09':'SEP','10':'OCT','11':'NOV','12':'DEC',}
-#http://www.3480-3590-data-conversion.com/article-signed-fields.html
-DIGIT_DICT={'{':'0','A':'1','B':'2','C':'3','D':'4','E':'5','F':'6','G':'7','H':'8','I':'9',\
-            '}':'0','J':'1','K':'2','L':'3','M':'4','N':'5','O':'6','P':'7','Q':'8','R':'9'} 
-NEGATIVE_NUMS=['}','J','K','L','M','N','O','P','Q','R']
-
    
 "TRANSLATERS"
 
 def debug(msg):
-    if debugOn:
-        debug_log.write("\n"+str(msg))
-
-def whereami():
-    return inspect.stack()[1][3]         
+    if DEBUGISON:
+        DEBUG_LOG.write("\n"+str(msg))
+       
     
 def init():
     debug("****** procedure==>  "+whereami()+" ******")
+    global output_log
     
     global csr_input 
-    global csr_BCCBSPL_log
+#    global output_log
     global record_id
   
     "OPEN FILES"
     "   CABS INPUT FILE"
-    csr_input = open(fullname, "r")
+    csr_input = open(IP_FILENM_AND_PATH, "r")
     
     "PROCESS HEADER LINE"
     "  -want to get bill cycle info for output log file "
@@ -164,24 +163,24 @@ def init():
 
     "  CREATE LOG FILE WITH CYCLE DATE FROM HEADER AND RUN TIME OF THIS JOB"
     
-    log_file=os.path.join(output_dir,"CSR_Cycle"+str(cycl_yy)+str(cycl_mmdd)+str(cycl_time)+"_"+startTM.strftime("%Y%m%d_@%H%M") +".txt")
+    log_file=os.path.join(OUTPUT_DIR,"CSR_Cycle"+str(cycl_yy)+str(cycl_mmdd)+str(cycl_time)+"_"+startTM.strftime("%Y%m%d_@%H%M") +".txt")
          
-    csr_BCCBSPL_log = open(log_file, "w")
-    csr_BCCBSPL_log.write("-CSR CAIMS ETL PROCESS-")
+    output_log = open(log_file, "w")
+    output_log.write("-CSR CAIMS ETL PROCESS-")
     
     if record_id not in settings.get('CSRSettings','CSRHDR'):
         process_ERROR_END("The first record in the input file was not a "+str(settings.get('CSRSettings','CSRHDR')).rstrip(' ')+" record")
 
-    writelog("Process "+sys.argv[0])
-    writelog("   started execution at: " + str(startTM))
-    writelog(STAR_LINE)
-    writelog(" ")
-    writelog("Input file: "+str(csr_input))
-    writelog("Log file: "+str(csr_BCCBSPL_log))
+    writelog("Process "+sys.argv[0],output_log)
+    writelog("   started execution at: " + str(startTM),output_log)
+    writelog(STAR_LINE,output_log)
+    writelog(" ",output_log)
+    writelog("Input file: "+str(csr_input),output_log)
+    writelog("Log file: "+str(output_log),output_log)
     
     "Write header record informatio only"
-    writelog("Header Record Info:")
-    writelog("     Record ID: "+record_id+" YY: "+cycl_yy+", MMDD: "+cycl_mmdd+", TIME: "+str(cycl_time))
+    writelog("Header Record Info:",output_log)
+    writelog("     Record ID: "+record_id+" YY: "+cycl_yy+", MMDD: "+cycl_mmdd+", TIME: "+str(cycl_time),output_log)
     
     count_record(record_id,False)
     del headerLine,cycl_yy,cycl_mmdd,cycl_time
@@ -192,6 +191,7 @@ def main():
     global record_type
     global line, Level
     global record_counts, unknown_record_counts
+    global output_log
     "Counters"
 
     global inputLineCnt, CSR_KEY_cnt
@@ -211,7 +211,7 @@ def main():
     
     
     "text files"
-    global csr_input, csr_BCCBSPL_log
+    global csr_input, output_log
     
       
     global CSR_column_names
@@ -223,27 +223,27 @@ def main():
     
 #DECLARE TABLE ARRAYS AND DICTIONARIES
     CSR_BCCBSPL_tbl=collections.OrderedDict() 
-    CSR_BCCBSPL_DEFN_DICT=createTableTypeDict('CAIMS_CSR_BCCBSPL')     
+    CSR_BCCBSPL_DEFN_DICT=createTableTypeDict('CAIMS_CSR_BCCBSPL',con,output_log)     
     CSR_BILLREC_tbl=collections.OrderedDict()
-    CSR_BILLREC_DEFN_DICT=createTableTypeDict('CAIMS_CSR_BILLREC')
+    CSR_BILLREC_DEFN_DICT=createTableTypeDict('CAIMS_CSR_BILLREC',con,output_log)
     CSR_ACTLREC_tbl=collections.OrderedDict()
-    CSR_ACTLREC_DEFN_DICT=createTableTypeDict('CAIMS_CSR_ACTLREC')
+    CSR_ACTLREC_DEFN_DICT=createTableTypeDict('CAIMS_CSR_ACTLREC',con,output_log)
     CSR_CKT_tbl=collections.OrderedDict()
-    CSR_CKT_DEFN_DICT=createTableTypeDict('CAIMS_CSR_CKT')    
+    CSR_CKT_DEFN_DICT=createTableTypeDict('CAIMS_CSR_CKT',con,output_log)    
     CSR_LOC_tbl=collections.OrderedDict()
-    CSR_LOC_DEFN_DICT=createTableTypeDict('CAIMS_CSR_LOC')    
+    CSR_LOC_DEFN_DICT=createTableTypeDict('CAIMS_CSR_LOC',con,output_log)    
     CSR_LFID_tbl=collections.OrderedDict()
-    CSR_LFID_DEFN_DICT=createTableTypeDict('CAIMS_CSR_LFID') 
+    CSR_LFID_DEFN_DICT=createTableTypeDict('CAIMS_CSR_LFID',con,output_log) 
     CSR_COSFID_tbl=collections.OrderedDict()
-    CSR_COSFID_DEFN_DICT=createTableTypeDict('CAIMS_CSR_COSFID') 
+    CSR_COSFID_DEFN_DICT=createTableTypeDict('CAIMS_CSR_COSFID',con,output_log) 
     CSR_UFID_tbl=collections.OrderedDict()
-    CSR_UFID_DEFN_DICT=createTableTypeDict('CAIMS_CSR_UFID') 
+    CSR_UFID_DEFN_DICT=createTableTypeDict('CAIMS_CSR_UFID',con,output_log) 
     CSR_USOC_tbl=collections.OrderedDict()
-    CSR_USOC_DEFN_DICT=createTableTypeDict('CAIMS_CSR_USOC') 
+    CSR_USOC_DEFN_DICT=createTableTypeDict('CAIMS_CSR_USOC',con,output_log) 
     CSR_CUFID_tbl=collections.OrderedDict()
-    CSR_CUFID_DEFN_DICT=createTableTypeDict('CAIMS_CSR_CUFID') 
+    CSR_CUFID_DEFN_DICT=createTableTypeDict('CAIMS_CSR_CUFID',con,output_log) 
     CSR_CFID_tbl=collections.OrderedDict()
-    CSR_CFID_DEFN_DICT=createTableTypeDict('CAIMS_CSR_CFID') 
+    CSR_CFID_DEFN_DICT=createTableTypeDict('CAIMS_CSR_CFID',con,output_log) 
 
     "COUNTERS"
     inputLineCnt=0
@@ -281,7 +281,7 @@ def main():
             current_abbd_rec_key=process_getkey()
             if badKey:
                 count_record("BAD_ABD_KEY",True)
-                writelog("WARNING: BAD INPUT DATA.  ACNA="+current_abbd_rec_key['ACNA']+", BAN="+current_abbd_rec_key['BAN']+", EOB_DATE="+current_abbd_rec_key['EOB_DATE'])
+                writelog("WARNING: BAD INPUT DATA.  ACNA="+current_abbd_rec_key['ACNA']+", BAN="+current_abbd_rec_key['BAN']+", EOB_DATE="+current_abbd_rec_key['EOB_DATE'],output_log)
             else:
                 if current_abbd_rec_key != prev_abbd_rec_key:
                     CSR_KEY_cnt+=1
@@ -298,8 +298,8 @@ def main():
             
         else:
             "ERROR:Unidentified Record"
-            writelog("ERROR: Not sure what type of record this is:")
-            writelog(line)
+            writelog("ERROR: Not sure what type of record this is:",output_log)
+            writelog(line,output_log)
          
          
         prev_record_id=record_id
@@ -315,14 +315,15 @@ def log_footer_rec_info():
     debug("****** procedure==>  "+whereami()+" ******")
     global record_id
     global Level
+    global output_log
     
     BAN_cnt=line[6:12]
     REC_cnt=line[13:22]
-    writelog(" ")
-    writelog("Footer Record Info:")
-    writelog("     Record ID "+record_id+" BAN Count: "+BAN_cnt+" RECORD CNT: "+REC_cnt)
-    writelog("The total number of lines counted in input file is : "+ str(inputLineCnt))
-    writelog(" ")
+    writelog(" ",output_log)
+    writelog("Footer Record Info:",output_log)
+    writelog("     Record ID "+record_id+" BAN Count: "+BAN_cnt+" RECORD CNT: "+REC_cnt,output_log)
+    writelog("The total number of lines counted in input file is : "+ str(inputLineCnt),output_log)
+    writelog(" ",output_log)
     
     count_record(record_id,False)
 
@@ -330,7 +331,6 @@ def log_footer_rec_info():
 
 def process_csr_records():
     debug("****** procedure==>  "+whereami()+" ******")
-    global CSR_BCCBSPL_tbl
     global record_id, Level
     global tstx, verno, tsty, UACT
       
@@ -405,11 +405,12 @@ def reset_record_flags():
 def process_TYP0101_HEADREC():
     debug("****** procedure==>  "+whereami()+" ******")
     global verno, Level
+    global output_log
     verno=line[82:84]  
 #    CSR_BCCBSPL_tbl['HOLD_BILL']=line[104:105]   
-    writelog("** BOS VERSION NUMBER IS "+verno+" ** ")
-    writelog("CASE HEADREC HOLD_BILL = "+line[104:105] )
-    writelog("**--------------------------**")
+    writelog("** BOS VERSION NUMBER IS "+verno+" ** ",output_log)
+    writelog("CASE HEADREC HOLD_BILL = "+line[104:105],output_log)
+    writelog("**--------------------------**",output_log)
     
     
     #Reset Variables at this level?????
@@ -421,9 +422,9 @@ def process_ROOTREC_TYP0505():
     debug("****** procedure==>  "+whereami()+" ******")
     "050500"
     
-    global CSR_BCCBSPL_tbl  
     global root_rec
     global record_id
+    global output_log
   
     initialize_BCCBSPL_tbl()
     "record_id doesn't need populated"
@@ -445,7 +446,7 @@ def process_ROOTREC_TYP0505():
 
     "we already know ACNA, EOB_DATE, and BAN are the same"   
 
-    process_insert_table("CAIMS_CSR_BCCBSPL", CSR_BCCBSPL_tbl, CSR_BCCBSPL_DEFN_DICT)
+    process_insert_table("CAIMS_CSR_BCCBSPL", CSR_BCCBSPL_tbl, CSR_BCCBSPL_DEFN_DICT,con,output_log)
     root_rec=True
          
     "no flag to set - part of root"
@@ -454,8 +455,8 @@ def process_ROOTREC_CHEKFID():
     debug("****** procedure==>  "+whereami()+" ******")
     "051000,051100"
     
-    global CSR_BCCBSPL_tbl  
     global record_id
+    global output_log
     
     if line[189:193] == 'CCNA':
         #do UPCCNA
@@ -475,7 +476,7 @@ def process_ROOTREC_CHEKFID():
         if CSR_BCCBSPL_tbl['MCN'].rstrip(' ') == '' and CSR_BCCBSPL_tbl['CCNA'].rstrip(' ') == '':
             pass   #values are blank nothing to update
         else:
-            process_update_table("CAIMS_CSR_BCCBSPL", CSR_BCCBSPL_tbl, CSR_BCCBSPL_DEFN_DICT)
+            process_update_table("CAIMS_CSR_BCCBSPL", CSR_BCCBSPL_tbl, CSR_BCCBSPL_DEFN_DICT,con,output_log)
     else:
         process_ERROR_END("ERROR: No root record for CHEKFID record "+str(record_id)+".  Not updating MCN or CCNA.")
         
@@ -483,7 +484,8 @@ def process_ROOTREC_CHEKFID():
 
 def process_BILLREC_BILLTO():   
     debug("****** procedure==>  "+whereami()+" ******")
-    global CSR_BILLREC_tbl,record_id
+    global record_id
+    global output_log
     "100500"
 #    -************************************************************
 #    -*   PROCESS DATA FOR THE BILLREC SEGMENT OF DATABASE
@@ -499,11 +501,12 @@ def process_BILLREC_BILLTO():
     CSR_BILLREC_tbl['BADDR4']=line[193:225]
     CSR_BILLREC_tbl['INPUT_RECORDS']=str(record_id)
     
-    process_insert_table("CAIMS_CSR_BILLREC", CSR_BILLREC_tbl, CSR_BILLREC_DEFN_DICT)
+    process_insert_table("CAIMS_CSR_BILLREC", CSR_BILLREC_tbl, CSR_BILLREC_DEFN_DICT,con,output_log)
 
 def process_ACTLREC_BILLTO(): 
     debug("****** procedure==>  "+whereami()+" ******")
-    global CSR_ACTLREC_tbl, record_id
+    global record_id
+    global output_log
     "ACTLREC  -  101000"    
     
     initialize_ACTLREC_tbl()
@@ -518,20 +521,21 @@ def process_ACTLREC_BILLTO():
     CSR_ACTLREC_tbl['FGRP']=line[217:218]
     CSR_ACTLREC_tbl['INPUT_RECORDS']=str(record_id)
     
-    process_insert_table("CAIMS_CSR_ACTLREC", CSR_ACTLREC_tbl, CSR_ACTLREC_DEFN_DICT)
+    process_insert_table("CAIMS_CSR_ACTLREC", CSR_ACTLREC_tbl, CSR_ACTLREC_DEFN_DICT,con,output_log)
     
 def process_ROOTREC_UPROOT():
     debug("****** procedure==>  "+whereami()+" ******")
-    global CSR_BCCBSPL_tbl, record_id
+    global record_id
+    global output_log
     "ROOTREC  -  101500"    
 
     if root_rec==True:
         if line[61:62].rstrip('') != '':
             CSR_BCCBSPL_tbl['TAPE']=line[61:62]
             CSR_BCCBSPL_tbl['INPUT_RECORDS']+="*"+str(record_id)
-            process_update_table("CAIMS_CSR_BCCBSPL", CSR_BCCBSPL_tbl, CSR_BCCBSPL_DEFN_DICT)
+            process_update_table("CAIMS_CSR_BCCBSPL", CSR_BCCBSPL_tbl, CSR_BCCBSPL_DEFN_DICT,con,output_log)
         else:
-            writelog("No TAPE value on input data for ACNA="+current_abbd_rec_key['ACNA']+", BAN="+current_abbd_rec_key['BAN']+", EOB_DATE="+current_abbd_rec_key['EOB_DATE'])
+            writelog("No TAPE value on input data for ACNA="+current_abbd_rec_key['ACNA']+", BAN="+current_abbd_rec_key['BAN']+", EOB_DATE="+current_abbd_rec_key['EOB_DATE'],output_log)
  
     else:
         process_ERROR_END("ERROR: Encountered UPROOT record (record id "+record_id+") but no root record has been created.")
@@ -540,8 +544,8 @@ def process_ROOTREC_UPROOT():
 
 def process_TYP1505_CKT_LOC():
     debug("****** procedure==>  "+whereami()+" ******")    
-    global CSR_CKT_tbl,CSR_LOC_tbl
     global Level, record_id, USOCCNT
+    global output_log
     "150500"
     
     tfid=line[72:76].rstrip(' ')
@@ -575,7 +579,7 @@ def process_TYP1505_CKT_LOC():
             CSR_CKT_tbl['CACT']=line[224:225]
             CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
                 
-            process_insert_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
+            process_insert_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
 
             
         elif tfid in  ('CKL','CKLT'):
@@ -626,7 +630,7 @@ def process_TYP1505_CKT_LOC():
                 
             CSR_LOC_tbl['INPUT_RECORDS']=str(record_id)
             
-            process_insert_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT)            
+            process_insert_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)            
         else:
             pass #SKIP record
             
@@ -638,7 +642,8 @@ def process_FIDDRVR():
 #    -* PROCESS '401506' AND '401511' RECORDS. THESE ARE FLOATING FIDS
 #    -* ONLY.  LEFT-HANDED FIDS ARE PROCESSED IN THE TYP1505 CASE
 #    -************************************************************
-    global CSR_CUFID_tbl, Level, record_id, tfid
+    global Level, record_id, tfid
+    global output_log
     
     "150600, 151001"
 #FIXFORM X-159 TFID/4 X121 X6 X21 ACTVY_IND/1    
@@ -669,7 +674,7 @@ def process_FIDDRVR():
         CSR_CUFID_tbl['FGRP']=line[198:199]
         CSR_CUFID_tbl['INPUT_RECORDS']=str(record_id)
         
-        process_insert_table("CAIMS_CSR_CUFID", CSR_CUFID_tbl, CSR_CUFID_DEFN_DICT)
+        process_insert_table("CAIMS_CSR_CUFID", CSR_CUFID_tbl, CSR_CUFID_DEFN_DICT,con,output_log)
         
     elif Level == 'CO':
         process_COSFID()
@@ -695,14 +700,14 @@ def process_FIDDRVR():
             CSR_UFID_tbl['FGRP']=line[198:199]
             CSR_UFID_tbl['INPUT_RECORDS']=str(record_id)
             
-            process_insert_table("CAIMS_CSR_UFID", CSR_UFID_tbl, CSR_UFID_DEFN_DICT)   
+            process_insert_table("CAIMS_CSR_UFID", CSR_UFID_tbl, CSR_UFID_DEFN_DICT,con,output_log)   
     else:
         pass #go to top
 
 def process_LOCFIDRVR():
     debug("****** procedure==>  "+whereami()+" ******")    
-    global CSR_LOC_tbl, tfid, Level, record_id
-   
+    global tfid, Level, record_id
+    global output_log
 
     #initialize_LOC_tbl()    
     #No initialize... These should all be updates.
@@ -713,7 +718,7 @@ def process_LOCFIDRVR():
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 LSO/7
         CSR_LOC_tbl['LSO']=line[77:84]
         CSR_LOC_tbl['INPUT_RECORDS']=str(record_id)
-        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT)
+        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)
     elif tfid == 'FSO ':  
         
 #         GOTO LOCFSOUP (UPDATE THE FSO FIELD IN THE LOC SEGMENT )
@@ -721,91 +726,92 @@ def process_LOCFIDRVR():
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 FSO/7
         CSR_LOC_tbl['FSO']=line[77:84]
         CSR_LOC_tbl['INPUT_RECORDS']=str(record_id)
-        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT)
+        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)
     elif tfid == 'NCI ': 
 #         GOTO LOCNCIUP (UPDATE THE NCI FIELD IN THE LOC SEGMENT )
 #         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 NCI/13
         CSR_LOC_tbl['NCI']=line[77:90]
         CSR_LOC_tbl['INPUT_RECORDS']=str(record_id)
-        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT)
+        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)
     elif tfid == 'NC  ': 
 #         GOTO LOCLNCUP (UPDATE THE LNCODE FIELD IN THE LOC SEGMENT )
 #         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 LNCODE/4
         CSR_LOC_tbl['LNCODE']=line[77:81]
         CSR_LOC_tbl['INPUT_RECORDS']=str(record_id)
-        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT)
+        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)
     elif tfid == 'ICO ': 
 #        GOTO LOCICOUP (UPDATE THE ICO FIELD IN THE LOC SEGMENT )
 #        LOC = LOC 
 #        FIXFORM X-225 X5 X6 X13 X42 X4 X1 ICO/4
         CSR_LOC_tbl['ICO']=line[77:81]
         CSR_LOC_tbl['INPUT_RECORDS']=str(record_id)
-        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT)
+        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)
     elif tfid == 'SGN ': 
 #         GOTO LOCSGNUP (UPDATE THE SGN FIELD IN THE LOC SEGMENT )
 #         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 SGN/3
         CSR_LOC_tbl['SGN']=line[77:80]
         CSR_LOC_tbl['INPUT_RECORDS']=str(record_id)
-        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT)
+        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)
     elif tfid == 'TAR ': 
 #         GOTO LOCTARUP  (UPDATE THE LTAR FIELD IN THE LOC SEGMENT )
 #         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 LTAR/4
         CSR_LOC_tbl['LTAR']=line[77:81]
         CSR_LOC_tbl['INPUT_RECORDS']=str(record_id)
-        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT)
+        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)
     elif tfid == 'RTAR': 
 #         GOTO LOCRTARUP (UPDATE THE LRTAR FIELD IN THE LOC SEGMENT )
 #         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 LRTAR/4
         CSR_LOC_tbl['LRTAR']=line[77:81] 
         CSR_LOC_tbl['INPUT_RECORDS']=str(record_id)
-        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT)
+        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)
     elif tfid == 'DES ': 
 #         GOTO LOCLDESUP (UPDATE THE LDES  FIELD IN THE LOC SEGMENT )
 #         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 LDES/36
         CSR_LOC_tbl['LDES']=line[77:113] 
         CSR_LOC_tbl['INPUT_RECORDS']=str(record_id)
-        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT)
+        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)
     elif tfid == 'HSO ': 
 #         GOTO LOCHSOUP  (UPDATE THE HSO FIELD IN THE LOC SEGMENT )
 #         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 HSO/7
         CSR_LOC_tbl['HSO']=line[77:84]
         CSR_LOC_tbl['INPUT_RECORDS']=str(record_id)
-        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT)
+        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)
     elif tfid == 'CFA ': 
 #         GOTO LOCCFAUP  (UPDATE THE CFA FIELD IN THE LOC SEGMENT )
 #         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 CFA/40
         CSR_LOC_tbl['CFA']=line[77:117]
         CSR_LOC_tbl['INPUT_RECORDS']=str(record_id)
-        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT)
+        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)
     elif tfid == 'XR  ': 
 #         GOTO LOCXRUP   (UPDATE THE XR  FIELD IN THE LOC SEGMENT )
 #         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 XR/4
         CSR_LOC_tbl['XR']=line[77:81]
         CSR_LOC_tbl['INPUT_RECORDS']=str(record_id)
-        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT)
+        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)
     elif tfid == 'SN  ': 
 #         GOTO LOCSNUP (UPDATE THE SN  FIELD IN THE LOC SEGMENT ) 
 #         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 SN/30
         CSR_LOC_tbl['SN']=line[77:107]
         CSR_LOC_tbl['INPUT_RECORDS']=str(record_id)
-        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT)
+        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)
     else:  
         process_LOCFID()               
  
 
 def process_LOCFID():
     debug("****** procedure==>  "+whereami()+" ******")
-    global CSR_LFID_tbl, record_id
+    global record_id
+    global output_log
 #     -* THIS CASE READS THE  FLOATED FID AND LOADS THE CORRESPONDING
 #     -* FIELD IN THE LFIDSEG SEGMENT OF THE DATABASE.
 #     -************************************************************ 
@@ -819,12 +825,12 @@ def process_LOCFID():
     CSR_LFID_tbl['LOCFID_DATA']=line[77:113]
     CSR_LFID_tbl['FGRP']=line[198:199]
     CSR_LFID_tbl['INPUT_RECORDS']=str(record_id)
-    process_insert_table("CAIMS_CSR_LFID", CSR_LFID_tbl, CSR_LFID_DEFN_DICT)
+    process_insert_table("CAIMS_CSR_LFID", CSR_LFID_tbl, CSR_LFID_DEFN_DICT,con,output_log)
  
 def process_COSFID():   
     debug("****** procedure==>  "+whereami()+" ******")
-    global CSR_COSFID_tbl
     global tfid, Level,record_id
+    global output_log
     " "
 #-************************************************************
 #-* PROCESS '401511' RECORDS FROM CASE FIDDRVR WHEN Level EQUALS 'CO'.
@@ -839,11 +845,12 @@ def process_COSFID():
     CSR_COSFID_tbl['COSFID']=line[72:76]
     CSR_COSFID_tbl['COSFID_DATA']=line[77:113]
     CSR_COSFID_tbl['INPUT_RECORDS']=str(record_id)
-    process_insert_table("CAIMS_CSR_COSFID", CSR_COSFID_tbl, CSR_COSFID_DEFN_DICT)
+    process_insert_table("CAIMS_CSR_COSFID", CSR_COSFID_tbl, CSR_COSFID_DEFN_DICT,con,output_log)
 
 def process_CKTFIDRVR():
     debug("****** procedure==>  "+whereami()+" ******")  
-    global CSR_CKT_tbl, Level, tfid, record_id,CSR_CFID_tbl
+    global Level, tfid, record_id
+    global output_log
     
     if tfid == 'NC  ': 
 #         GOTO CKTNCUP (LOADS THE NCODE FIELD IN THE CKTSEG OF THE DATABASE)
@@ -852,7 +859,7 @@ def process_CKTFIDRVR():
          #MATCH CIRCUIT? update ncode
          CSR_CKT_tbl['NCODE']=line[77:81]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
+         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'PIU ': 
 #        GOTO CKTPIUUP (LOADS THE PIU FIELD IN THE CKTSEG OF THE DATABASE)
 #        CIRCUIT = CIRCUIT 
@@ -860,7 +867,7 @@ def process_CKTFIDRVR():
          #MATCH CIRCUIT? update piu
          CSR_CKT_tbl['PIU']=line[77:80]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
+         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'ASG ': 
 #         GOTO CKTASGUP (LOADS THE ASG FIELD IN THE CKTSEG OF THE DATABASE)
 #         CIRCUIT = CIRCUIT 
@@ -868,7 +875,7 @@ def process_CKTFIDRVR():
           #MATCH CIRCUIT? update asg
          CSR_CKT_tbl['ASG']=line[77:83]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
+         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'LCC ': 
 #         GOTO CKTLCCUP (LOADS THE LCC FIELD IN THE CKTSEG OF THE DATABASE)
 #         CIRCUIT = CIRCUIT 
@@ -876,7 +883,7 @@ def process_CKTFIDRVR():
 #         #MATCH CIRCUIT? update lcc
          CSR_CKT_tbl['LCC']=line[77:80]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
+         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'BAND': 
 #         GOTO CKTBNDUP (LOADS THE BAND FIELD IN THECKTSEG OF THE DATABASE)
 #        CIRCUIT = CIRCUIT 
@@ -884,7 +891,7 @@ def process_CKTFIDRVR():
          #MATCH CIRCUIT? update band
          CSR_CKT_tbl['BAND']=line[77:78]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
+         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'TAR ': 
 #        GOTO CKTTARUP (LOADS THE TAR FIELD IN THE CKTSEG OF THE DATABASE)
 #        CIRCUIT = CIRCUIT 
@@ -892,7 +899,7 @@ def process_CKTFIDRVR():
          #MATCH CIRCUIT? update TAR
          CSR_CKT_tbl['TAR']=line[77:81]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
+         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'RTAR': 
 #         GOTO CKTRTARUP (CRTAR  FIELD IN THE CKTSEG OF THE DATABASE)
 #         CIRCUIT = CIRCUIT 
@@ -900,7 +907,7 @@ def process_CKTFIDRVR():
          #MATCH CIRCUIT? update RTAR
          CSR_CKT_tbl['RTAR']=line[77:81]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
+         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'LLN ': 
 #         GOTO CKTLLNUP (LOADS THE LLN FIELD IN THE CKTSEG OF THE DATABASE)
 #         CIRCUIT = CIRCUIT 
@@ -908,7 +915,7 @@ def process_CKTFIDRVR():
          #MATCH CIRCUIT? update LLN
          CSR_CKT_tbl['LLN']=line[77:89]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
+         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'TLI ': 
 #         GOTO CKTTLIUP (LOADS THE TLI FIELD IN THE CKTSEG OF THE DATABASE)
 #         CIRCUIT = CIRCUIT 
@@ -916,7 +923,7 @@ def process_CKTFIDRVR():
          #MATCH CIRCUIT? update tli
          CSR_CKT_tbl['TLI']=line[77:89]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
+         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'PICX': 
 #         GOTO CKTPICXUP (LOADS THE PICX FIELD IN THE CKTSEG OF THE DATABASE)
 #         CIRCUIT = CIRCUIT 
@@ -924,7 +931,7 @@ def process_CKTFIDRVR():
          #MATCH CIRCUIT? update picx
          CSR_CKT_tbl['PICX']=line[77:80]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
+         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'HML ': 
 #         GOTO CKTHMLUP (LOADS THE HML FIELD IN THE CKTSEG OF THE DATABASE)
 #         CIRCUIT = CIRCUIT 
@@ -932,7 +939,7 @@ def process_CKTFIDRVR():
           #MATCH CIRCUIT? update hml
          CSR_CKT_tbl['HML']=line[77:117]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
+         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'HTG ': 
 #         GOTO CKTHTGUP (LOADS THE HTG FIELD IN THE CKTSEG OF THE DATABASE)
 #         CIRCUIT = CIRCUIT 
@@ -940,7 +947,7 @@ def process_CKTFIDRVR():
           #MATCH CIRCUIT? update htg
          CSR_CKT_tbl['HTG']=line[77:117]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
+         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'TN  ': 
 #         GOTO CKTTNUP (LOADS THE TN FIELD IN THE CKTSEG OF THE DATABASE)
 #         CIRCUIT = CIRCUIT 
@@ -948,7 +955,7 @@ def process_CKTFIDRVR():
           #MATCH CIRCUIT? update tn
          CSR_CKT_tbl['TN']=line[77:89]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
+         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'TER ': 
 #         GOTO CKTTERUP (LOADS THE TER FIELD IN THE CKTSEG OF THE DATABASE)
 #         CIRCUIT = CIRCUIT 
@@ -956,7 +963,7 @@ def process_CKTFIDRVR():
           #MATCH CIRCUIT? update ter
          CSR_CKT_tbl['TER']=line[77:81]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
+         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'STN ': 
 #         GOTO CKTSTNUP (LOADS THE STN FIELD IN THE CKTSEG OF THE DATABASE)
 #         CIRCUIT = CIRCUIT 
@@ -964,7 +971,7 @@ def process_CKTFIDRVR():
           #MATCH CIRCUIT? update stn
          CSR_CKT_tbl['STN']=line[77:91]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
+         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'SFN ': 
 #         GOTO CKTSFNUP (LOADS THE SFN FIELD IN THE CKTSEG OF THE DATABASE)
 #         CIRCUIT = CIRCUIT 
@@ -972,7 +979,7 @@ def process_CKTFIDRVR():
           #MATCH CIRCUIT? update sfn
          CSR_CKT_tbl['SFN']=line[77:81]  
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
+         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'SFG ': 
 #         GOTO CKTSFGUP (LOADS THE SFG FIELD IN THE CKTSEG OF THE DATABASE)
 #         CIRCUIT = CIRCUIT 
@@ -980,7 +987,7 @@ def process_CKTFIDRVR():
           #MATCH CIRCUIT? update sfg
          CSR_CKT_tbl['SFG']=line[77:83] 
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
+         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'CKR ': 
 #         GOTO CKTCKRUP (LOADS THE CKR FIELD IN THE CKTSEG OF THE DATABASE)
 #         CIRCUIT = CIRCUIT 
@@ -988,7 +995,7 @@ def process_CKTFIDRVR():
          #MATCH CIRCUIT? update CKR
          CSR_CKT_tbl['CKR']=line[77:113]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
+         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'GSZ ': 
 #         GOTO CKTGSZUP logic below
 #        -************************************************************
@@ -1001,7 +1008,7 @@ def process_CKTFIDRVR():
         #7+5+6+13+42+4+1  =78 
          CSR_CKT_tbl['GSZ']=line[77:80]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
+         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'NHN ': 
 #         GOTO CKTNHNUP logic below:
 #        -************************************************************
@@ -1014,7 +1021,7 @@ def process_CKTFIDRVR():
 #        FIXFORM X-225 X5 X6 X13 X42 X4 X1 NHN/12
          CSR_CKT_tbl['NHN']=line[77:89]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
+         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'PTN ': 
 #         GOTO CKTPTNUP  logic below
 #        -************************************************************
@@ -1027,7 +1034,7 @@ def process_CKTFIDRVR():
 #        FIXFORM X-225 X5 X6 X13 X42 X4 X1 PTN/12
          CSR_CKT_tbl['PTN']=line[77:89] 
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
+         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'SBN ': 
 #         GOTO CKTSBNUP  logic below 
 #        -************************************************************
@@ -1040,7 +1047,7 @@ def process_CKTFIDRVR():
 #        FIXFORM X-225 X5 X6 X13 X42 X4 X1 SBN/40
          CSR_CKT_tbl['SBN']=line[77:117]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
+         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     else:
 #         GOTO CKTFID logic below
 #        -************************************************************
@@ -1057,7 +1064,7 @@ def process_CKTFIDRVR():
             CSR_CFID_tbl['CFID']=line[72:76]
             CSR_CFID_tbl['FID_DATA']=line[77:113]
             CSR_CFID_tbl['INPUT_RECORDS']=str(record_id)
-            process_update_table("CAIMS_CSR_CFID", CSR_CFID_tbl, CSR_CFID_DEFN_DICT)
+            process_update_table("CAIMS_CSR_CFID", CSR_CFID_tbl, CSR_CFID_DEFN_DICT,con,output_log)
 #                     INSERT data here                 
  
 
@@ -1081,8 +1088,9 @@ def process_USOCDRVR_36():
 def process_CKTUSOC_36():    
     debug("****** procedure==>  "+whereami()+" ******")  
 #    UPDATES THE CKTUSOC SEGMENT
-    global CSR_CKTUSOC_tbl,Level, record_id
+    global Level, record_id
     global CUACT
+    global output_log
     
     
     if Level in ('L', 'LU'):
@@ -1112,11 +1120,12 @@ def process_CKTUSOC_36():
         if CUACT == 'D':
             pass #goto top
         else:
-            process_insert_table("CAIMS_CSR_CKTUSOC", CSR_CKTUSOC_tbl, CSR_CKTUSOC_DEFN_DICT)          
+            process_insert_table("CAIMS_CSR_CKTUSOC", CSR_CKTUSOC_tbl, CSR_CKTUSOC_DEFN_DICT,con,output_log)          
     
 def process_COSUSOC_36():    
     debug("****** procedure==>  "+whereami()+" ******")  
-    global CSR_CKT_tbl, Level, record_id
+    global Level, record_id
+    global output_log
 #    -************************************************************
 #    -*  THIS CASE PROCESSES CIRCUIT Level USOC RECORDS 401510. AND
 #    -*  UPDATES THE CKTUSOC SEGMENT. SET Level TO 'CO'.
@@ -1150,15 +1159,15 @@ def process_COSUSOC_36():
         if CSR_CKT_tbl['COSACT'] == 'D':
             pass #GOTO TOP
         else:
-             process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
+             process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
 #            MATCH CIRCUIT
 #              ON MATCH UPDATE COSDINSTCC COSUSOCQTY COSRES1
 #              ON MATCH UPDATE COS_USOC COSRES2 COSDACTCC COSACT
 # 
 def process_LOCUSOC_36():     
     debug("****** procedure==>  "+whereami()+" ******")
-    global CSR_USOC_tbl,Level,record_id, USOCCNT, UACT
-    
+    global Level,record_id, USOCCNT, UACT
+    global output_log
     global USOCCNT,UCODE,USOC_CNT, Level, record_id
  #USOC
     initialize_CSR_USOC_tbl()
@@ -1187,14 +1196,15 @@ def process_LOCUSOC_36():
     if UACT == 'D':
         pass #GOTO TOP
     else:       
-        process_insert_table("CAIMS_CSR_USOC", CSR_USOC_tbl, CSR_USOC_DEFN_DICT)
+        process_insert_table("CAIMS_CSR_USOC", CSR_USOC_tbl, CSR_USOC_DEFN_DICT,con,output_log)
             
 def process_USOCDRVR_TAX():
     debug("****** procedure==>  "+whereami()+" ******")
     "151600"
     global x_tbl
-    global CSR_USOC_tbl,Level,record_id, CSR_CKTUSOC_tbl, CSR_CKT_tbl
+    global Level,record_id
     global USOC_CNT, UCODE, CUACT, CUSOCQTY, UACT, Level, CIRCUIT,COSACT
+    global output_log
     
 #        FIXFORM X-225 X5 X6 X13 X31 X11 TUSOC/5 X121 X9
 #        FIXFORM X3 X2 X4 X1 X8
@@ -1230,7 +1240,7 @@ def process_USOCDRVR_TAX():
         if UACT == 'D':
             pass #GOTO TOP
         else:
-            process_update_table("CAIMS_CSR_USOC", CSR_USOC_tbl, CSR_USOC_DEFN_DICT)
+            process_update_table("CAIMS_CSR_USOC", CSR_USOC_tbl, CSR_USOC_DEFN_DICT,con,output_log)
 #            update record
 
    
@@ -1265,7 +1275,7 @@ def process_USOCDRVR_TAX():
         if CUACT == 'D':
             pass #GOTO TOP
         else:
-            process_update_table("CAIMS_CSR_CKTUSOC", CSR_CKTUSOC_tbl, CSR_CKTUSOC_DEFN_DICT)
+            process_update_table("CAIMS_CSR_CKTUSOC", CSR_CKTUSOC_tbl, CSR_CKTUSOC_DEFN_DICT,con,output_log)
 #            update record
     
     else:
@@ -1299,7 +1309,7 @@ def process_USOCDRVR_TAX():
         if COSACT == 'D':
             pass #GOTO TOP
         else:
-             process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)        
+             process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)        
 #            update record
 
 
@@ -1307,8 +1317,9 @@ def process_USOCDRVR_PLN():
     debug("****** procedure==>  "+whereami()+" ******")
     "151700"
     global x_tbl
+    global output_log
     global current_abbd_rec_key   
-    global CSR_USOC_tbl, Level, record_id, CSR_CKTUSOC_tbl, CSR_CKT_tbl
+    global Level, record_id
     global USOCCNT,USOC_CNT,UCODE
 #    FIXFORM X-225 X5 X6 X13 X31 X11 TUSOC/5 X26 X5 X5 X8 X8 X3
 #    FIXFORM X1 X5 X2 X1 X5 X26 X8 X1 X44    
@@ -1352,7 +1363,7 @@ def process_USOCDRVR_PLN():
         if UACT == 'D':
             pass #GOTO TOP
         else:
-            process_update_table("CAIMS_CSR_USOC", CSR_USOC_tbl, CSR_USOC_DEFN_DICT)
+            process_update_table("CAIMS_CSR_USOC", CSR_USOC_tbl, CSR_USOC_DEFN_DICT,con,output_log)
 #            update record
 
     elif TUSOC.rstrip(' ') in ('UDP', 'U3P','U6P'):
@@ -1393,7 +1404,7 @@ def process_USOCDRVR_PLN():
         if CUACT == 'D':
             pass  #GOTO TOP
         else:
-            process_update_table("CAIMS_CSR_CKTUSOC", CSR_CKTUSOC_tbl, CSR_CKTUSOC_DEFN_DICT)
+            process_update_table("CAIMS_CSR_CKTUSOC", CSR_CKTUSOC_tbl, CSR_CKTUSOC_DEFN_DICT,con,output_log)
 #            update record
  
 #            
@@ -1438,7 +1449,7 @@ def process_USOCDRVR_PLN():
         if COSACT == 'D':
             pass  #GOTO TOP
         else:
-            process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT)
+            process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
 #            update data
  
 
@@ -1450,7 +1461,7 @@ def process_USOCDRVR_PLN():
 ## 
 def initialize_CKT_tbl():            
     debug("****** procedure==>  "+whereami()+" ******")
-    global CSR_CKT_tbl, current_abbd_rec_key     
+    global  current_abbd_rec_key     
     
     CSR_CKT_tbl['ACNA']=current_abbd_rec_key['ACNA']    
     CSR_CKT_tbl['EOB_DATE']=current_abbd_rec_key['EOB_DATE']
@@ -1492,7 +1503,6 @@ def initialize_CKT_tbl():
     
 def initialize_LFID_tbl():
     debug("****** procedure==>  "+whereami()+" ******")
-    global CSR_LFID_tbl
     global current_abbd_rec_key 
 
     CSR_LFID_tbl['ACNA']=current_abbd_rec_key['ACNA']    
@@ -1506,7 +1516,6 @@ def initialize_LFID_tbl():
  
 def initialize_LOC_tbl():
     debug("****** procedure==>  "+whereami()+" ******")
-    global CSR_LOC_tbl
     global current_abbd_rec_key     
     
     CSR_LOC_tbl['ACNA']=current_abbd_rec_key['ACNA']    
@@ -1541,7 +1550,6 @@ def initialize_LOC_tbl():
     
 def  initialize_BCCBSPL_tbl():
     debug("****** procedure==>  "+whereami()+" ******")
-    global CSR_BCCBSPL_tbl
     global current_abbd_rec_key 
     
     CSR_BCCBSPL_tbl['ACNA']=current_abbd_rec_key['ACNA']    
@@ -1572,7 +1580,6 @@ def  initialize_BCCBSPL_tbl():
  
 def initialize_BILLREC_tbl():
     debug("****** procedure==>  "+whereami()+" ******")
-    global CSR_BILLREC_tbl
     global current_abbd_rec_key     
     
     CSR_BILLREC_tbl['ACNA']=current_abbd_rec_key['ACNA']    
@@ -1591,7 +1598,6 @@ def initialize_BILLREC_tbl():
     
 def initialize_ACTLREC_tbl():
     debug("****** procedure==>  "+whereami()+" ******")
-    global CSR_ACTLREC_tbl
     global current_abbd_rec_key    
 
     CSR_ACTLREC_tbl['ACNA']=current_abbd_rec_key['ACNA']    
@@ -1609,7 +1615,6 @@ def initialize_ACTLREC_tbl():
  
 def initialize_CUFID_tbl():  
     debug("****** procedure==>  "+whereami()+" ******")
-    global CSR_CUFID_tbl
     global current_abbd_rec_key  
 
     CSR_CUFID_tbl['ACNA']=current_abbd_rec_key['ACNA']    
@@ -1623,7 +1628,6 @@ def initialize_CUFID_tbl():
  
 def initialize_COSFID_tbl():  
     debug("****** procedure==>  "+whereami()+" ******")
-    global CSR_COSFID_tbl
     global current_abbd_rec_key    
     
     CSR_COSFID_tbl['ACNA']=current_abbd_rec_key['ACNA']    
@@ -1637,7 +1641,6 @@ def initialize_COSFID_tbl():
  
 def initialize_UFID_tbl():        
     debug("****** procedure==>  "+whereami()+" ******")
-    global CSR_UFID_tbl
     global current_abbd_rec_key  
 
     CSR_UFID_tbl['ACNA']=current_abbd_rec_key['ACNA']    
@@ -1652,7 +1655,6 @@ def initialize_UFID_tbl():
          
 def initialize_CSR_USOC_tbl():
     debug("****** procedure==>  "+whereami()+" ******")
-    global CSR_USOC_tbl
     global current_abbd_rec_key  
 
     CSR_USOC_tbl['ACNA']=current_abbd_rec_key['ACNA']    
@@ -1696,18 +1698,10 @@ def initialize_CSR_USOC_tbl():
     CSR_USOC_tbl['INPUT_RECORDS']=''
     
 
- 
-    
-    
-    
-    
-    
-    
-        
+
 
 def initialize_CSR_CKTUSOC_tbl():
     debug("****** procedure==>  "+whereami()+" ******")
-    global CSR_CKTUSOC_tbl
     global current_abbd_rec_key  
 
     CSR_CKTUSOC_tbl['ACNA']=current_abbd_rec_key['ACNA']    
@@ -1723,7 +1717,6 @@ def initialize_CSR_CKTUSOC_tbl():
 
 def initialize_CSR_CFID_tbl():
     debug("****** procedure==>  "+whereami()+" ******")
-    global CSR_CFID_tbl
     global current_abbd_rec_key 
  
     CSR_CFID_tbl['ACNA']=current_abbd_rec_key['ACNA']    
@@ -1738,334 +1731,6 @@ def initialize_CSR_CFID_tbl():
     
 ####END INITIALIZE PROCEDURES
     
-    
-    
-    
-    
-def format_date(datestring):
-    debug("****** procedure==>  "+whereami()+" ******")
-    dtSize=len(datestring)
-    
-    if dtSize ==5:
-        #jdate conversion
-        return "TO_DATE('"+datestring+"','YY-DDD')"
-    elif dtSize==6:
-        return "TO_DATE('"+datestring[4:6]+"-"+MONTH_DICT[datestring[2:4]]+"-"+"20"+datestring[:2]+"','DD-MON-YY')"  
-    elif dtSize==8:
-        return "TO_DATE('"+datestring[:4]+"-"+datestring[4:6]+"-"+"20"+datestring[6:2]+"','YYYY-MM-DD')"     
- 
- 
-    
-def process_insert_table(tbl_name, tbl_rec,tbl_dic):
-    debug("****** procedure==>  "+whereami()+" ******")
-     
-    firstPart="INSERT INTO "+tbl_name+" (" #add columns
-    secondPart=" VALUES ("  #add values
-   
-    for key, value in tbl_rec.items() :
-        nulVal=False
-        if str(value).rstrip(' ') == '':
-            nulVal=True
-#             "EMPTY VALUE"
-    
-        try:
-            if tbl_dic[key] in ('c|STRING', 'x|STRING'):
-                firstPart+=key+","
-                if nulVal:
-                    secondPart+="NULL,"
-                else:
-                    secondPart+="'"+str(value).rstrip(' ')+"',"
-            elif tbl_dic[key] in ('c|DATETIME', 'x|DATETIME'):
-                firstPart+=key+","
-                if nulVal:
-                    secondPart+="NULL,"
-                else:                    
-                    secondPart+=format_date(value)+","
-            elif tbl_dic[key] in ('c|NUMBER','x|NUMBER'):
-                firstPart+=key+","
-                "RULE: if null/blank number, then populate with 0."
-                if nulVal:
-                    secondPart+="0,"
-                else:                    
-                    secondPart+=str(convertnumber(value))+","                    
-            else:
-                process_ERROR_END("ERROR: "+whereami()+"procedure could not determine data type for " +tbl_dic[key] + " in the "+tbl_name+" table.") 
-        except KeyError as e:
-            writelog("WARNING: Column "+key+" not found in the "+tbl_name+" table.  Skipping.")
-            writelog("KeyError:"+e.message)
- 
-    firstPart=firstPart.rstrip(',')+")"     
-    secondPart=secondPart.rstrip(',') +")"      
-     
-    insCurs=con.cursor()
-    insSQL=firstPart+secondPart
-
-    try:
-        insCurs.execute(insSQL) 
-        con.commit()
-        writelog("SUCCESSFUL INSERT INTO "+tbl_name+".")
-    except cx_Oracle.DatabaseError , e:
-        if ("%s" % e.message).startswith('ORA-00001:'):
-            writelog("****** DUPLICATE INSERT INTO "+str(tbl_name)+"*****************")
-            writelog("Insert SQL: "+str(insSQL))
-        else:
-            writelog("ERROR:"+str(e.message))
-            writelog("SQL causing problem:"+insSQL)
-    finally:
-        insCurs.close()
-   
-   
-        
-def process_update_table(tbl_name, tbl_rec,tbl_dic):
-    debug("****** procedure==>  "+whereami()+" ******")
-
-    "ASSUMPTIONS!!!"
-    "THis code assumes that if a value is null that it does not update the ORacle table."
-    "Need to make a code change if that rule is not true"
-    
-    updateSQL="UPDATE "+tbl_name+" SET " #add columns
-    whereClause="WHERE "
-
-    for key, value in tbl_rec.items() :
-      
-        nulVal=False
-        if str(value).rstrip(' ') == '':
-            nulVal=True
-               
-        try:
-            if key == 'ACNA':
-                whereClause+="ACNA='"+str(value).rstrip(' ')+"' AND "
-            elif key == 'EOB_DATE':
-                whereClause+="EOB_DATE="+format_date(value)+" AND "
-            elif key == 'BAN':
-                whereClause+="BAN='"+str(value).rstrip(' ')+"' AND "
-            #####STRINGS##############
-            elif tbl_dic[key] == 'c|STRING':
-                if str(key) == 'INPUT_RECORDS':
-                    updateSQL+="INPUT_RECORDS = INPUT_RECORDS||'*"+str(value).rstrip(' ')+"',"
-                elif not nulVal:
-                    updateSQL+=str(key)+"='"+str(value).rstrip(' ')+"',"
-            elif tbl_dic[key] == 'x|STRING':
-                if nulVal:
-                    #problem ix value should not be null
-                    process_ERROR_END("ERROR: "+key+" is a unique index STRING/VARCHAR value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
-                else:
-                   whereClause+=str(key)+"='"+str(value).rstrip(' ')+"' AND "  
-                   
-            #####DATETIME#############
-            elif tbl_dic[key] =='c|DATETIME':
-#                print "date key and value:"+str(key)+" "+str(value)
-                if not nulVal:
-                    updateSQL+=str(key)+"="+format_date(value)+"," 
-            elif tbl_dic[key] =='x|DATETIME':
-                if nulVal:
-                    #problem ix value should not be null
-                    process_ERROR_END("ERROR: "+key+" is a unique index DATETIME value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
-                else:
-                   whereClause+=str(key)+"='"+format_date(value)+"' AND "  
-                   
-            #####NUMBERS#############               
-            elif tbl_dic[key] =='c|NUMBER':
-                if not nulVal:                   
-                    updateSQL+=str(key)+"="+str(convertnumber(value))+","        
-            elif tbl_dic[key] =='x|NUMBER':        
-                if nulVal:
-                    #problem ix value should not be null
-                    process_ERROR_END("ERROR: "+key+" is a unique index NUMBER value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
-                else:
-                   whereClause+=str(key)+"='"+str(convertnumber(value))+"' AND "  
-                    
-            else:
-                process_ERROR_END("ERROR: process_update_table could not determine data type for " +tbl_dic[key] + " in the "+tbl_name+" table.")  
-        except KeyError as e:
-            writelog("WARNING: Column "+key+" not found in the "+tbl_name+" table.  Skipping.")
-            writelog("KeyError:"+e.message)
-                
-    whereClause=whereClause.rstrip(' ').rstrip('AND')
-    updateSQL=updateSQL.rstrip(',')
-        
-    updCurs=con.cursor()
-    updateSQL+=" "+whereClause
- 
-    try:
-        updCurs.execute(updateSQL) 
-#        print "Number of rows updated: " + updCurs.count??????
-        con.commit()
-        writelog("SUCCESSFUL UPDATE TO  "+tbl_name+".")
-        writelog("SUCCESSFUL INSERT INTO "+tbl_name+".")
-        
-    except cx_Oracle.DatabaseError, e:
-        if ("%s" % e.message).startswith('ORA-:'):
-            writelog("ERROR:"+str(exc.message))
-            writelog("UPDATE SQL Causing problem:"+updateSQL)
-    finally:
-        updCurs.close()
-            
-
-
-def convertnumber(num) :
-    debug("****** procedure==>  "+whereami()+" ******")
-    global record_id
-    "this procedure assumes 2 decimal places"
-#   0000022194F
-#   0000000000{
-#   00000000000
-#    writelog("number in :"+str(num))
-    newNum= str(num).lstrip('0')
-    
-    if newNum == '{' or newNum == '' or newNum.rstrip(' ') == '':
-        return "0"
-    elif newNum.isdigit():
-#        writelog("number out: "+newNum[:len(str(newNum))-2]+"."+newNum[len(str(newNum))-2:len(str(newNum))])
-        return newNum[:len(str(newNum))-2]+"."+newNum[len(str(newNum))-2:len(str(newNum))]
-#        eg 98765
-#        return 987.65
-    elif len(str(newNum)) == 1:
-        hundredthsPlaceSymbol=DIGIT_DICT[str(newNum)]
-        if hundredthsPlaceSymbol in NEGATIVE_NUMS:
-            return "-0.0"+hundredthsPlaceSymbol
-        else:
-            return "0.0"+hundredthsPlaceSymbol
-        
-    elif str(newNum[:len(newNum)-1]).isdigit():
-        leftPart=str(newNum)[:len(str(newNum))-2]+"."
-        right2=newNum[len(str(newNum))-2:len(str(newNum))]
-
-        tensPlace=right2[:1]
-        hundredthsPlaceSymbol=right2[1:2] 
-        #convert last place non numeric digit to a number
-        hundredthsPlace= DIGIT_DICT[hundredthsPlaceSymbol]
-#        writelog("number out: "+leftPart+tensPlace+hundredthsPlace)
-        if hundredthsPlaceSymbol in NEGATIVE_NUMS:
-            return "-"+leftPart+tensPlace+hundredthsPlace
-        else:
-            return leftPart+tensPlace+hundredthsPlace
-        #everything numeric except last digit
-    else:
-        process_ERROR_END("ERROR: Cant Convert Number: "+str(num) +"   from line:"+str(line))
-
-
-
-def getTableColumns(tablenm):
-    debug("****** procedure==>  "+whereami()+" ******")
-             
-    myCurs=con.cursor()
-    myTbl=tablenm
-    mySQL="select * FROM %s WHERE ROWNUM=1" % (myTbl)
-    tmpArray=[]
-    try:    
-        myCurs.execute(mySQL)  
-        for x in myCurs.description:
-            tmpArray.append(x)
-        con.commit()
-    except cx_Oracle.DatabaseError, e:
-        if ("%s" % e.message).startswith('ORA-:'):
-            writelog("ERROR:"+str(exc.message))
-            writelog("SQL causing problem:"+updateSQL)
-    finally:
-        myCurs.close()
-        
-    return tmpArray  
-    
-    
- 
-    
-    
-
-def getUniqueKeyColumns(tablenm):
-    debug("****** procedure==>  "+whereami()+" ******")
-             
-    keyCurs=con.cursor()
-    myTbl=tablenm
-    
-    mySQL="SELECT column_name FROM USER_IND_COLUMNS WHERE INDEX_NAME IN (SELECT INDEX_NAME FROM USER_INDEXES WHERE TABLE_NAME ='"+myTbl+"' AND UNIQUENESS='UNIQUE')" 
-    colArray=[]
-    try:    
-        keyCurs.execute(mySQL)  
-        for x in keyCurs:
-            colArray.append(x)
-        con.commit()
-    except cx_Oracle.DatabaseError, e:
-        if ("%s" % e.message).startswith('ORA-:'):
-            writelog("ERROR:"+str(exc.message))
-            writelog("SQL causing problem:"+updateSQL)
-    finally:
-        keyCurs.close()
-        
-    return colArray  
-    
-    
-  
-def createTableTypeDict(tablenm):
-    debug("****** procedure==>  "+whereami()+" ******")
-    #This Procedure retrieves table columsn and unique key columns
-    #-It iterates through and marks the column as either and x (index)
-    #-or a c (column).  This is then used in the update routine.  The
-    #Update table can then use the unique index fields in the where
-    #clause
-           
-    colTypDict=collections.OrderedDict()
-        
-    colArray=[]
-    colArray=getTableColumns(tablenm)
-    indexArray=[]
-    indexArray=getUniqueKeyColumns(tablenm)
-     
-    ixKeyFound=False
-    for tblCol in colArray:
-        for keyCol in indexArray:
-            if tblCol[0] == keyCol[0]:
-                #Index column found  "x" = unique index column
-                ixKeyFound=True
-                colTypDict[tblCol[0]]=str("x|")+str(tblCol[1]).replace("<type 'cx_Oracle.",'').replace("'>",'') 
-                break
-                
-        if not ixKeyFound:
-            colTypDict[tblCol[0]]=str("c|")+str(tblCol[1]).replace("<type 'cx_Oracle.",'').replace("'>",'') 
-        else:
-            ixKeyFound = False 
-        
-    return colTypDict 
-         
-
-"########################################################################################################################"
-"####################################TRANSLATION MODULES#################################################################"
-
-def translate_TACCNT_FGRP(taccnt,tfgrp):
-    debug("****** procedure==>  "+whereami()+" ******")    
-    
-    if taccnt.rstrip(' ')=='S':
-        if tfgrp.rstrip(' ') == 'A':
-            return '1'
-        elif tfgrp.rstrip(' ') == 'B':
-            return '2'
-        elif tfgrp.rstrip(' ') == 'C':
-            return '3'  
-        elif tfgrp.rstrip(' ') == 'D':
-            return '4'            
-        elif tfgrp.rstrip(' ') == 'E':
-            return '5'            
-        elif tfgrp.rstrip(' ') == 'G':
-            return '6'            
-        elif tfgrp.rstrip(' ') == 'L':
-            return '7'            
-        elif tfgrp.rstrip(' ') == 'Q':
-            return '8'            
-        elif tfgrp.rstrip(' ') == 'S':
-            return '9'            
-        elif tfgrp.rstrip(' ') == 'T':
-            return 'Z'            
-        elif tfgrp.rstrip(' ') == 'V':
-            return 'Y'            
-        else:
-            return taccnt.rstrip(' ')
-    else:
-        return tfgrp.rstrip(' ')
-#  TACCNT_FGRP=IF TACCNT EQ 'S' THEN DECODE TFGRP(
-#              'A' '1' 'B' '2' 'C' '3' 'D' '4' 'E' '5' 'G' '6'
-#              'L' '7' 'Q' '8' 'S' '9' 'T' 'Z' 'V' 'Y' ELSE '$') ELSE
-#              TACCNT    
-#   
 def count_record(currec,unknownRec):
     global record_counts
     global unknown_record_counts
@@ -2081,10 +1746,7 @@ def count_record(currec,unknownRec):
         else:
             record_counts[str(currec).rstrip(' ')]=1 
     
-    
-
-"####################################TRANSLATION MODULES END ############################################################"    
-"########################################################################################################################" 
+ 
 
    
 def process_write_program_stats():
@@ -2092,59 +1754,55 @@ def process_write_program_stats():
     global record_counts
     global unknown_record_counts
     global CSR_KEY_cnt
-    writelog("\n")
+    global output_log
+    writelog("\n",output_log)
     
     idCnt=0
-    writelog("**")
-    writelog("**Processed record IDs and counts**")
-    writelog("record_id, count")
+    writelog("**",output_log)
+    writelog("**Processed record IDs and counts**",output_log)
+    writelog("record_id, count,output_log")
     
     keylist = record_counts.keys()
     keylist.sort()
     for key in keylist:
 #        print "%s: %s" % (key, record_counts[key])   
-        writelog(str(key)+", "+str(record_counts[key]))   
+        writelog(str(key)+", "+str(record_counts[key]),output_log)   
         idCnt+=record_counts[key]       
 #    for key, value in record_counts.items():
 #        writelog(str(key)+", "+str(value))   
 #        idCnt+=value
-    writelog("\n  Total count: "+str(idCnt))
-    writelog(" ")
-    writelog("**")
+    writelog("\n  Total count: "+str(idCnt),output_log)
+    writelog(" ",output_log)
+    writelog("**",output_log)
     unkCnt=0
-    writelog( "There are "+str(len(unknown_record_counts))+" different record ID types not processed: ")    
-    writelog("**UNKNOWN record IDs and counts**")
-    writelog("record_id, count")
+    writelog( "There are "+str(len(unknown_record_counts))+" different record ID types not processed: ",output_log)    
+    writelog("**UNKNOWN record IDs and counts**",output_log)
+    writelog("record_id, count",output_log)
 
     keylist = unknown_record_counts.keys()
     keylist.sort()
     for key in keylist:
 #        print "%s: %s" % (key, record_counts[key])   
-        writelog(str(key)+", "+str(unknown_record_counts[key]))   
+        writelog(str(key)+", "+str(unknown_record_counts[key]),output_log)   
         unkCnt+=unknown_record_counts[key]  
     
     
 #    for key, value in unknown_record_counts.items():
 #        writelog(str(key)+", "+str(value))
 #        unkCnt+=value
-    writelog("\n  Total count: "+str(unkCnt))    
-    writelog("**")    
+    writelog("\n  Total count: "+str(unkCnt),output_log)    
+    writelog("**",output_log)    
     
-    writelog("TOTAL ACNA/EOB_DATE/BAN's processed:"+str(CSR_KEY_cnt))
-    writelog(" ")
-    writelog("Total input records read from input file:"+str(idCnt+unkCnt))
-    writelog(" ")    
- 
-    
-def writelog(msg):
-    debug("****** procedure==>  "+whereami()+" ******")
-    global csr_BCCBSPL_log
-    
-    csr_BCCBSPL_log.write("\n"+msg)
+    writelog("TOTAL ACNA/EOB_DATE/BAN's processed:"+str(CSR_KEY_cnt),output_log)
+    writelog(" ",output_log)
+    writelog("Total input records read from input file:"+str(idCnt+unkCnt),output_log)
+    writelog(" ",output_log)
 
 
 def process_ERROR_END(msg):
-    writelog("ERROR:"+msg)
+    debug("****** procedure==>  "+whereami()+" ******")    
+    global output_log
+    writelog("ERROR:"+msg,output_log)
     debug("ERROR:"+msg)
     process_close_files()
     raise Exception("ERROR:"+msg)
@@ -2152,20 +1810,20 @@ def process_ERROR_END(msg):
     
 def process_close_files():
     debug("****** procedure==>  "+whereami()+" ******")
-    global csr_input
-    global csr_BCCBSPL_log
+    global csr_input,  output_log
+    global output_log
     
-    if debugOn:
-        debug_log.close()
+    if DEBUGISON:
+        DEBUG_LOG.close()
         
     csr_input.close() 
-    csr_BCCBSPL_log.close()
+    output_log.close()
    
     
     
 def endProg(msg):
     debug("****** procedure==>  "+whereami()+" ******")
- 
+    global output_log
  
     con.commit()
     con.close()
@@ -2174,10 +1832,10 @@ def endProg(msg):
      
     endTM=datetime.datetime.now()
     print "\nTotal run time:  %s" % (endTM-startTM)
-    writelog("\nTotal run time:  %s" % (endTM-startTM))
+    writelog("\nTotal run time:  %s" % (endTM-startTM),output_log)
      
 
-    writelog("\n"+msg)
+    writelog("\n"+msg,output_log)
      
     process_close_files()
 
