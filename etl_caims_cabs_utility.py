@@ -8,7 +8,6 @@
 import datetime
 import inspect
 #import collections
-import collections
 startTM=datetime.datetime.now();
 import cx_Oracle
 #import sys
@@ -23,20 +22,17 @@ global record_counts,unknown_record_counts
 #record_counts={}
 #unknown_record_counts={} 
  
-
-def whereami():
-    # returns the name of the current executing procedure, etc...
-   #e.g. procedure==>  format_date
-    return inspect.stack()[1][3]         
-    
-
 MONTH_DICT={'01':'JAN','02':'FEB','03':'MAR','04':'APR','05':'MAY','06':'JUN','07':'JUL','08':'AUG','09':'SEP','10':'OCT','11':'NOV','12':'DEC',} 
 DIGIT_DICT={'{':'0','A':'1','B':'2','C':'3','D':'4','E':'5','F':'6','G':'7','H':'8','I':'9',\
             '}':'0','J':'1','K':'2','L':'3','M':'4','N':'5','O':'6','P':'7','Q':'8','R':'9'} 
 NEGATIVE_NUMS=['}','J','K','L','M','N','O','P','Q','R']
  
     
-
+def whereami():
+    # returns the name of the current executing procedure, etc...
+   #e.g. procedure==>  format_date
+    return inspect.stack()[1][3]         
+    
 
 def format_date(datestring):
     
@@ -49,8 +45,6 @@ def format_date(datestring):
         return "TO_DATE('"+datestring[4:6]+"-"+MONTH_DICT[datestring[2:4]]+"-"+"20"+datestring[:2]+"','DD-MON-YY')"  
     elif dtSize==8:
         return "TO_DATE('"+datestring[:4]+"-"+datestring[4:6]+"-"+"20"+datestring[6:2]+"','YYYY-MM-DD')"     
- 
- 
     
 def process_insert_table(tbl_name, tbl_rec,tbl_dic,con,output_log):
     
@@ -84,7 +78,8 @@ def process_insert_table(tbl_name, tbl_rec,tbl_dic,con,output_log):
                 else:                    
                     secondPart+=str(convertnumber(value))+","                    
             else:
-                process_ERROR_END("ERROR: "+whereami()+"procedure could not determine data type for " +tbl_dic[key] + " in the "+tbl_name+" table.") 
+#                process_ERROR_END("ERROR: "+whereami()+"procedure could not determine data type for " +tbl_dic[key] + " in the "+tbl_name+" table.") 
+                raise Exception("ERROR: "+whereami()+"procedure could not determine data type for " +tbl_dic[key] + " in the "+tbl_name+" table.")
         except KeyError as e:
             writelog("WARNING: Column "+key+" not found in the "+tbl_name+" table.  Skipping.",output_log)
             writelog("KeyError:"+e.message,output_log)
@@ -105,13 +100,11 @@ def process_insert_table(tbl_name, tbl_rec,tbl_dic,con,output_log):
             writelog("****** DUPLICATE INSERT INTO "+str(tbl_name)+"*****************",output_log)
             writelog("Insert SQL: "+str(insSQL),output_log)
         else:
-            writelog("ERROR:"+str(e.message),output_log)
+            writelog("ERROR:"+whereami()+":" +str(e.message),output_log)
             writelog("SQL causing problem:"+insSQL,output_log)
     finally:
         insCurs.close()
    
-   
-        
 def process_update_table(tbl_name, tbl_rec,tbl_dic,con,output_log):
     
     "ASSUMPTIONS!!!"
@@ -143,7 +136,8 @@ def process_update_table(tbl_name, tbl_rec,tbl_dic,con,output_log):
             elif tbl_dic[key] == 'x|STRING':
                 if nulVal:
                     #problem ix value should not be null
-                    process_ERROR_END("ERROR: "+key+" is a unique index STRING/VARCHAR value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
+#                    process_ERROR_END("ERROR: "+key+" is a unique index STRING/VARCHAR value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
+                    raise Exception("ERROR: "+key+" is a unique index STRING/VARCHAR value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
                 else:
                    whereClause+=str(key)+"='"+str(value).rstrip(' ')+"' AND "  
                    
@@ -155,7 +149,8 @@ def process_update_table(tbl_name, tbl_rec,tbl_dic,con,output_log):
             elif tbl_dic[key] =='x|DATETIME':
                 if nulVal:
                     #problem ix value should not be null
-                    process_ERROR_END("ERROR: "+key+" is a unique index DATETIME value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
+#                    process_ERROR_END("ERROR: "+key+" is a unique index DATETIME value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
+                    raise Exception("ERROR: "+key+" is a unique index DATETIME value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name) 
                 else:
                    whereClause+=str(key)+"='"+format_date(value)+"' AND "  
                    
@@ -166,12 +161,14 @@ def process_update_table(tbl_name, tbl_rec,tbl_dic,con,output_log):
             elif tbl_dic[key] =='x|NUMBER':        
                 if nulVal:
                     #problem ix value should not be null
-                    process_ERROR_END("ERROR: "+key+" is a unique index NUMBER value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
+#                    process_ERROR_END("ERROR: "+key+" is a unique index NUMBER value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
+                     raise Exception("ERROR: "+key+" is a unique index NUMBER value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
                 else:
                    whereClause+=str(key)+"='"+str(convertnumber(value))+"' AND "  
                     
             else:
-                process_ERROR_END("ERROR: process_update_table could not determine data type for " +tbl_dic[key] + " in the "+tbl_name+" table.")  
+#                process_ERROR_END("ERROR: process_update_table could not determine data type for " +tbl_dic[key] + " in the "+tbl_name+" table.")  
+                raise Exception("ERROR: process_update_table could not determine data type for " +tbl_dic[key] + " in the "+tbl_name+" table.") 
         except KeyError as e:
             writelog("WARNING: Column "+key+" not found in the "+tbl_name+" table.  Skipping.",output_log)
             writelog("KeyError:"+e.message,output_log)
@@ -189,8 +186,8 @@ def process_update_table(tbl_name, tbl_rec,tbl_dic,con,output_log):
         writelog("SUCCESSFUL UPDATE TO  "+tbl_name+".",output_log)
         writelog("SUCCESSFUL INSERT INTO "+tbl_name+".",output_log)
         
-    except cx_Oracle.DatabaseError, e:
-        if ("%s" % e.message).startswith('ORA-:'):
+    except cx_Oracle.DatabaseError, exc:
+        if ("%s" % exc.message).startswith('ORA-:'):
             writelog("ERROR:"+str(exc.message),output_log)
             writelog("UPDATE SQL Causing problem:"+updateSQL,output_log)
     finally:
@@ -236,7 +233,8 @@ def convertnumber(num) :
             return leftPart+tensPlace+hundredthsPlace
         #everything numeric except last digit
     else:
-        process_ERROR_END("ERROR: Cant Convert Number: "+str(num) +"   from line:"+str(line))
+#        process_ERROR_END("ERROR: Cant Convert Number: "+str(num) +"   from line:"+str(line))
+        raise Exception("ERROR: Cant Convert Number: "+str(num))
 
 
 
@@ -252,10 +250,10 @@ def getTableColumns(tablenm,con,output_log):
         for x in myCurs.description:
             tmpArray.append(x)
         con.commit()
-    except cx_Oracle.DatabaseError, e:
-        if ("%s" % e.message).startswith('ORA-:'):
+    except cx_Oracle.DatabaseError, exc:
+        if ("%s" % exc.message).startswith('ORA-:'):
             writelog("ERROR:"+str(exc.message),output_log)
-            writelog("SQL causing problem:"+updateSQL,output_log)
+            writelog("SQL causing problem:"+mySQL,output_log)
     finally:
         myCurs.close()
         
@@ -273,10 +271,10 @@ def getUniqueKeyColumns(tablenm,con,output_log):
         for x in keyCurs:
             colArray.append(x)
         con.commit()
-    except cx_Oracle.DatabaseError, e:
-        if ("%s" % e.message).startswith('ORA-:'):
+    except cx_Oracle.DatabaseError, exc:
+        if ("%s" % exc.message).startswith('ORA-:'):
             writelog("ERROR:"+str(exc.message),output_log)
-            writelog("SQL causing problem:"+updateSQL,output_log)
+            writelog("SQL causing problem:"+mySQL,output_log)
     finally:
         keyCurs.close()
         
@@ -289,7 +287,8 @@ def createTableTypeDict(tablenm, con,output_log):
     #Update table can then use the unique index fields in the where
     #clause
            
-    colTypDict=collections.OrderedDict()
+#    colTypDict=collections.OrderedDict()
+    colTypDict=dict()
         
     colArray=[]
     colArray=getTableColumns(tablenm,con,output_log)

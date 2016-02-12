@@ -36,7 +36,6 @@ REASON:
 """
 
 import datetime
-import collections
 startTM=datetime.datetime.now()
 import cx_Oracle
 import sys
@@ -47,9 +46,7 @@ import platform
 
 ###IMPORT COMMON/SHARED UTILITIES
 from etl_caims_cabs_utility import whereami, process_insert_table, process_update_table, writelog, \
-                                   createTableTypeDict,translate_TACCNT_FGRP  
-
-
+                                   createTableTypeDict  
 
 
 settings = ConfigParser.ConfigParser()
@@ -119,7 +116,7 @@ adjmtdtl_rec=False
 crnt1_051200_rec=False
 crnt1_055000_rec=False
 crnt2_rec=False    
- 
+CSR_CKT_exists=False 
  
 "GLOBAL VARIABLES"   
 record_id=''
@@ -187,7 +184,7 @@ def init():
     
 def main():
     debug("****** procedure==>  "+whereami()+" ******")
-    #CSR_config.initialize_CSR() 
+    #CSR_config.initialize() 
     global record_type
     global line, Level
     global record_counts, unknown_record_counts
@@ -197,6 +194,7 @@ def main():
     global inputLineCnt, CSR_KEY_cnt
 
     "TABLE Dictionaries - for each segment"
+     
     global CSR_BCCBSPL_tbl,  CSR_BCCBSPL_DEFN_DICT
     global CSR_BILLREC_tbl, CSR_BILLREC_DEFN_DICT
     global CSR_ACTLREC_tbl, CSR_ACTLREC_DEFN_DICT
@@ -208,7 +206,7 @@ def main():
     global CSR_USOC_tbl, CSR_USOC_DEFN_DICT
     global CSR_CUFID_tbl, CSR_CUFID_DEFN_DICT
     global CSR_CFID_tbl, CSR_CFID_DEFN_DICT
-    
+#    
     
     "text files"
     global csr_input, output_log
@@ -222,28 +220,43 @@ def main():
     global goodKey      
     
 #DECLARE TABLE ARRAYS AND DICTIONARIES
-    CSR_BCCBSPL_tbl=collections.OrderedDict() 
-    CSR_BCCBSPL_DEFN_DICT=createTableTypeDict('CAIMS_CSR_BCCBSPL',con,output_log)     
-    CSR_BILLREC_tbl=collections.OrderedDict()
+    
+#    CSR_BCCBSPL_tbl=collections.OrderedDict() 
+    prev_abbd_rec_key={'ACNA':'XXX','EOB_DATE':'990101','BAN':'000'}
+    
+    CSR_BCCBSPL_tbl=dict() 
+    CSR_BCCBSPL_DEFN_DICT=createTableTypeDict('CAIMS_CSR_BCCBSPL',con,output_log) 
+#    initialize_BCCBSPL_tbl()   
+    CSR_BILLREC_tbl=dict() 
     CSR_BILLREC_DEFN_DICT=createTableTypeDict('CAIMS_CSR_BILLREC',con,output_log)
-    CSR_ACTLREC_tbl=collections.OrderedDict()
+#    initialize_BILLREC_tbl()
+    CSR_ACTLREC_tbl=dict() 
     CSR_ACTLREC_DEFN_DICT=createTableTypeDict('CAIMS_CSR_ACTLREC',con,output_log)
-    CSR_CKT_tbl=collections.OrderedDict()
+#    initialize_ACTLREC_tbl()
+    CSR_CKT_tbl=dict()
     CSR_CKT_DEFN_DICT=createTableTypeDict('CAIMS_CSR_CKT',con,output_log)    
-    CSR_LOC_tbl=collections.OrderedDict()
+#    initialize_CKT_tbl()
+    CSR_LOC_tbl=dict()
     CSR_LOC_DEFN_DICT=createTableTypeDict('CAIMS_CSR_LOC',con,output_log)    
-    CSR_LFID_tbl=collections.OrderedDict()
+#    initialize_LOC_tbl()
+    CSR_LFID_tbl=dict()
     CSR_LFID_DEFN_DICT=createTableTypeDict('CAIMS_CSR_LFID',con,output_log) 
-    CSR_COSFID_tbl=collections.OrderedDict()
+#    initialize_LFID_tbl()
+    CSR_COSFID_tbl=dict()
     CSR_COSFID_DEFN_DICT=createTableTypeDict('CAIMS_CSR_COSFID',con,output_log) 
-    CSR_UFID_tbl=collections.OrderedDict()
+#    initialize_COSFID_tbl()
+    CSR_UFID_tbl=dict()
     CSR_UFID_DEFN_DICT=createTableTypeDict('CAIMS_CSR_UFID',con,output_log) 
-    CSR_USOC_tbl=collections.OrderedDict()
+#    initialize_UFID_tbl()
+    CSR_USOC_tbl=dict()
     CSR_USOC_DEFN_DICT=createTableTypeDict('CAIMS_CSR_USOC',con,output_log) 
-    CSR_CUFID_tbl=collections.OrderedDict()
+#    initialize_USOC_tbl()
+    CSR_CUFID_tbl=dict()
     CSR_CUFID_DEFN_DICT=createTableTypeDict('CAIMS_CSR_CUFID',con,output_log) 
-    CSR_CFID_tbl=collections.OrderedDict()
+#    initialize_CUFID_tbl()
+    CSR_CFID_tbl=dict()
     CSR_CFID_DEFN_DICT=createTableTypeDict('CAIMS_CSR_CFID',con,output_log) 
+#    initialize_CFID_tbl()
 
     "COUNTERS"
     inputLineCnt=0
@@ -251,7 +264,7 @@ def main():
     status_cnt=0
     "KEY"
     
-    prev_abbd_rec_key={'ACNA':'XXX','EOB_DATE':'990101','BAN':'000'}
+    
     Level=' '
     "LOOP THROUGH INPUT CABS TEXT FILE"
     for line in csr_input:
@@ -366,10 +379,11 @@ def process_csr_records():
     count_record(record_id,unknownRecord)
 
         
-    
+ 
+       
     
 def process_getkey():
-    debug("****** procedure==>  "+whereami()+" ******")
+#    debug("****** procedure==>  "+whereami()+" ******")
     global badKey
     
     if line[6:11].rstrip(' ') == '' or line[17:30].rstrip(' ') == '' or line[11:17].rstrip(' ') == '':
@@ -381,7 +395,7 @@ def process_getkey():
      
     
 def reset_record_flags():
-    debug("****** procedure==>  "+whereami()+" ******")    
+#    debug("****** procedure==>  "+whereami()+" ******")    
     "These flags are used to check if a record already exists for the current acna/ban/eob_date"
     "The first time a record is processed, if the count == 0, then an insert will be performed,"
     "else an update."
@@ -390,6 +404,8 @@ def reset_record_flags():
     
     global root_rec,baldue_rec,swsplchg_rec,baldtl_rec,pmntadj_rec,adjmtdtl_rec,crnt1_051200_rec,crnt1_055000_rec,crnt2_rec
     global dispdtl_rec
+    global CSR_CKT_exists
+    CSR_CKT_exists=False 
     
     root_rec=False
     baldue_rec=False
@@ -563,12 +579,14 @@ def process_TYP1505_CKT_LOC():
     else: #CREATE CKTSEG
         if tfid in ('CLS','CLF','CLT','CLM'):
             #build CKTSEG segment
+            debug("initializing CKT")
             initialize_CKT_tbl()
 ##FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X31
 #FIXFORM CDINSTCC/8 X3 FID/A4 X1 PSM/16 X-16 CIRCUIT/A53 X67
 #FIXFORM X1 CKT_LTP/A4 X1 CKT_MAN_BAN_UNITS/Z7.4 X6
 #FIXFORM CDACTCC/8 CACT/A1
             Level = 'C'
+            debug("populating CKT")
             CSR_CKT_tbl['CDINSTCC']=line[61:69]
             CSR_CKT_tbl['FID']=line[72:76]
             CSR_CKT_tbl['PSM']=line[77:93]
@@ -578,7 +596,7 @@ def process_TYP1505_CKT_LOC():
             CSR_CKT_tbl['CDACTCC']=line[216:224]
             CSR_CKT_tbl['CACT']=line[224:225]
             CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
-                
+            debug("inserting CKT")    
             process_insert_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
 
             
@@ -837,6 +855,11 @@ def process_COSFID():
 #-* THIS CASE READS THE FLOATED FID AND LOADS THE COSFID & COSFID_DATA
 #-* FIELD IN COSFID   SEGMENT OF THE DATABASE.
 #-************************************************************
+  
+#    if CSR_COSFID_tbl['COSFID']==line[72:76] and CSR_COSFID_tbl['COSFID_DATA']==line[77:113]:
+#        pass
+#    else:
+   
     initialize_COSFID_tbl()    
             #GOTO COSFID sEGMENT
 #                FIXFORM X-225 X5 X6 X13 X42
@@ -859,6 +882,7 @@ def process_CKTFIDRVR():
          #MATCH CIRCUIT? update ncode
          CSR_CKT_tbl['NCODE']=line[77:81]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
+         debug("updating item on CKT")
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'PIU ': 
 #        GOTO CKTPIUUP (LOADS THE PIU FIELD IN THE CKTSEG OF THE DATABASE)
@@ -867,6 +891,7 @@ def process_CKTFIDRVR():
          #MATCH CIRCUIT? update piu
          CSR_CKT_tbl['PIU']=line[77:80]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
+         debug("updating item on CKT")
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'ASG ': 
 #         GOTO CKTASGUP (LOADS THE ASG FIELD IN THE CKTSEG OF THE DATABASE)
@@ -875,6 +900,7 @@ def process_CKTFIDRVR():
           #MATCH CIRCUIT? update asg
          CSR_CKT_tbl['ASG']=line[77:83]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
+         debug("updating item on CKT")
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'LCC ': 
 #         GOTO CKTLCCUP (LOADS THE LCC FIELD IN THE CKTSEG OF THE DATABASE)
@@ -883,6 +909,7 @@ def process_CKTFIDRVR():
 #         #MATCH CIRCUIT? update lcc
          CSR_CKT_tbl['LCC']=line[77:80]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
+         debug("updating item on CKT")
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'BAND': 
 #         GOTO CKTBNDUP (LOADS THE BAND FIELD IN THECKTSEG OF THE DATABASE)
@@ -891,6 +918,7 @@ def process_CKTFIDRVR():
          #MATCH CIRCUIT? update band
          CSR_CKT_tbl['BAND']=line[77:78]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
+         debug("updating item on CKT")
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'TAR ': 
 #        GOTO CKTTARUP (LOADS THE TAR FIELD IN THE CKTSEG OF THE DATABASE)
@@ -899,6 +927,7 @@ def process_CKTFIDRVR():
          #MATCH CIRCUIT? update TAR
          CSR_CKT_tbl['TAR']=line[77:81]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
+         debug("updating item on CKT")
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'RTAR': 
 #         GOTO CKTRTARUP (CRTAR  FIELD IN THE CKTSEG OF THE DATABASE)
@@ -907,6 +936,7 @@ def process_CKTFIDRVR():
          #MATCH CIRCUIT? update RTAR
          CSR_CKT_tbl['RTAR']=line[77:81]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
+         debug("updating item on CKT")
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'LLN ': 
 #         GOTO CKTLLNUP (LOADS THE LLN FIELD IN THE CKTSEG OF THE DATABASE)
@@ -915,6 +945,7 @@ def process_CKTFIDRVR():
          #MATCH CIRCUIT? update LLN
          CSR_CKT_tbl['LLN']=line[77:89]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
+         debug("updating item on CKT")
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'TLI ': 
 #         GOTO CKTTLIUP (LOADS THE TLI FIELD IN THE CKTSEG OF THE DATABASE)
@@ -923,6 +954,7 @@ def process_CKTFIDRVR():
          #MATCH CIRCUIT? update tli
          CSR_CKT_tbl['TLI']=line[77:89]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
+         debug("updating item on CKT")
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'PICX': 
 #         GOTO CKTPICXUP (LOADS THE PICX FIELD IN THE CKTSEG OF THE DATABASE)
@@ -931,6 +963,7 @@ def process_CKTFIDRVR():
          #MATCH CIRCUIT? update picx
          CSR_CKT_tbl['PICX']=line[77:80]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
+         debug("updating item on CKT")
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'HML ': 
 #         GOTO CKTHMLUP (LOADS THE HML FIELD IN THE CKTSEG OF THE DATABASE)
@@ -939,6 +972,7 @@ def process_CKTFIDRVR():
           #MATCH CIRCUIT? update hml
          CSR_CKT_tbl['HML']=line[77:117]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
+         debug("updating item on CKT")
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'HTG ': 
 #         GOTO CKTHTGUP (LOADS THE HTG FIELD IN THE CKTSEG OF THE DATABASE)
@@ -947,6 +981,7 @@ def process_CKTFIDRVR():
           #MATCH CIRCUIT? update htg
          CSR_CKT_tbl['HTG']=line[77:117]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
+         debug("updating item on CKT")
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'TN  ': 
 #         GOTO CKTTNUP (LOADS THE TN FIELD IN THE CKTSEG OF THE DATABASE)
@@ -955,6 +990,7 @@ def process_CKTFIDRVR():
           #MATCH CIRCUIT? update tn
          CSR_CKT_tbl['TN']=line[77:89]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
+         debug("updating item on CKT")
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'TER ': 
 #         GOTO CKTTERUP (LOADS THE TER FIELD IN THE CKTSEG OF THE DATABASE)
@@ -963,6 +999,7 @@ def process_CKTFIDRVR():
           #MATCH CIRCUIT? update ter
          CSR_CKT_tbl['TER']=line[77:81]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
+         debug("updating item on CKT")
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'STN ': 
 #         GOTO CKTSTNUP (LOADS THE STN FIELD IN THE CKTSEG OF THE DATABASE)
@@ -971,6 +1008,7 @@ def process_CKTFIDRVR():
           #MATCH CIRCUIT? update stn
          CSR_CKT_tbl['STN']=line[77:91]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
+         debug("updating item on CKT")
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'SFN ': 
 #         GOTO CKTSFNUP (LOADS THE SFN FIELD IN THE CKTSEG OF THE DATABASE)
@@ -979,6 +1017,7 @@ def process_CKTFIDRVR():
           #MATCH CIRCUIT? update sfn
          CSR_CKT_tbl['SFN']=line[77:81]  
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
+         debug("updating item on CKT")
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'SFG ': 
 #         GOTO CKTSFGUP (LOADS THE SFG FIELD IN THE CKTSEG OF THE DATABASE)
@@ -987,6 +1026,7 @@ def process_CKTFIDRVR():
           #MATCH CIRCUIT? update sfg
          CSR_CKT_tbl['SFG']=line[77:83] 
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
+         debug("updating item on CKT")
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'CKR ': 
 #         GOTO CKTCKRUP (LOADS THE CKR FIELD IN THE CKTSEG OF THE DATABASE)
@@ -995,6 +1035,7 @@ def process_CKTFIDRVR():
          #MATCH CIRCUIT? update CKR
          CSR_CKT_tbl['CKR']=line[77:113]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
+         debug("updating item on CKT")
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'GSZ ': 
 #         GOTO CKTGSZUP logic below
@@ -1008,6 +1049,7 @@ def process_CKTFIDRVR():
         #7+5+6+13+42+4+1  =78 
          CSR_CKT_tbl['GSZ']=line[77:80]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
+         debug("updating item on CKT")
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'NHN ': 
 #         GOTO CKTNHNUP logic below:
@@ -1021,6 +1063,7 @@ def process_CKTFIDRVR():
 #        FIXFORM X-225 X5 X6 X13 X42 X4 X1 NHN/12
          CSR_CKT_tbl['NHN']=line[77:89]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
+         debug("updating item on CKT")
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'PTN ': 
 #         GOTO CKTPTNUP  logic below
@@ -1034,6 +1077,7 @@ def process_CKTFIDRVR():
 #        FIXFORM X-225 X5 X6 X13 X42 X4 X1 PTN/12
          CSR_CKT_tbl['PTN']=line[77:89] 
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
+         debug("updating item on CKT")
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     elif tfid == 'SBN ': 
 #         GOTO CKTSBNUP  logic below 
@@ -1047,6 +1091,7 @@ def process_CKTFIDRVR():
 #        FIXFORM X-225 X5 X6 X13 X42 X4 X1 SBN/40
          CSR_CKT_tbl['SBN']=line[77:117]
          CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
+         debug("updating item on CKT")
          process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
     else:
 #         GOTO CKTFID logic below
@@ -1060,7 +1105,7 @@ def process_CKTFIDRVR():
 #        FIXFORM CFID/A4 X1 FID_DATA/36
 #    SEGMENT=CFIDSEG
         if Level == 'C':
-            initialize_CSR_CFID_tbl()
+            initialize_CFID_tbl()
             CSR_CFID_tbl['CFID']=line[72:76]
             CSR_CFID_tbl['FID_DATA']=line[77:113]
             CSR_CFID_tbl['INPUT_RECORDS']=str(record_id)
@@ -1103,7 +1148,7 @@ def process_CKTUSOC_36():
         process_LOCUSOC_36()
     else:      #end LOCUSOC LOGIC
 #    SEGMENT=CKTUSOC    
-        initialize_CSR_CKTUSOC_tbl()
+        initialize_CKTUSOC_tbl()
         Level = 'CU'
     #    FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X31
     #    FIXFORM CUDINSTCC/8 CUSOCQTY/Z5 CUSOC/5 X137
@@ -1126,6 +1171,7 @@ def process_COSUSOC_36():
     debug("****** procedure==>  "+whereami()+" ******")  
     global Level, record_id
     global output_log
+    global CSR_CKT_exists
 #    -************************************************************
 #    -*  THIS CASE PROCESSES CIRCUIT Level USOC RECORDS 401510. AND
 #    -*  UPDATES THE CKTUSOC SEGMENT. SET Level TO 'CO'.
@@ -1146,20 +1192,120 @@ def process_COSUSOC_36():
 #        FIXFORM COSDINSTCC/8 COSUSOCQTY/Z6 COSRES1/2 COS_USOC/5 X121
 #        FIXFORM COSRES2/6 X7 COSDACTCC/8 COSACT/1
 #       SEGMENT=CKTSEG  
+#        if  CSR_CKT_tbl['ACNA']==line[6:11] \
+#            and CSR_CKT_tbl['EOB_DATE']==line[11:17] \
+#            and CSR_CKT_tbl['BAN']==line[17:30]
+#
+#         ???
+#        if CSR_CKT_exists:
+#            debug("CSR_CKT_exists- were going to udpate")
+#            if  CSR_CKT_tbl['ACNA']==line[6:11] \
+#                and CSR_CKT_tbl['EOB_DATE']==line[11:17] \
+#                and CSR_CKT_tbl['BAN']==line[17:30]:
+#                pass
+#            else:
+#                raise Exception("WE HAVE A MAJOR PROBLEM")
+#                
+#            if CSR_CKT_tbl['COSDINSTCC']=='':
+#                debug("setting COSDINSTCC")
+#                CSR_CKT_tbl['COSDINSTCC']=line[61:69]
+#            else:
+#                if CSR_CKT_tbl['COSDINSTCC']==line[61:69]:
+#                    debug("no change to COSDINSTCC value")
+#                else:
+#                    debug("setting COSDINSTCC to a new value")
+#            if CSR_CKT_tbl['COSUSOCQTY']=='':    
+#                debug("setting COSUSOCQTY")
+#                CSR_CKT_tbl['COSUSOCQTY']=line[69:75]
+#            else:
+#                if CSR_CKT_tbl['COSUSOCQTY']==line[69:75]:
+#                    debug("no change to COSUSOCQTY value")
+#                else:
+#                    debug("setting COSUSOCQTY to a new value")
+#            if CSR_CKT_tbl['COSRES1']=='':
+#                debug("setting COSRES1")
+#                CSR_CKT_tbl['COSRES1']=line[75:77]
+#            else:
+#                if CSR_CKT_tbl['COSRES1']==line[75:77]:
+#                    debug("no change to COSRES1 value")
+#                else:
+#                    debug("setting COSRES1 to a new value")
+#                
+#                
+#            if CSR_CKT_tbl['COS_USOC']=='':
+#                debug("setting COS_USOC")
+#                CSR_CKT_tbl['COS_USOC']=line[77:82]
+#            else:
+#                if CSR_CKT_tbl['COS_USOC']==line[77:82]:
+#                    debug("no change to COS_USOC value")
+#                else:
+#                    debug("setting COS_USOC to a new value")
+#            if CSR_CKT_tbl['COSRES2']=='':
+#                debug("setting COSRES2")
+#                CSR_CKT_tbl['COSRES2']=line[203:209]
+#            else:
+#                if CSR_CKT_tbl['COSRES2']==line[203:209]:
+#                    debug("no change to COSRES2 value")
+#                else:
+#                    debug("setting COSRES2 to a new value")
+#            if CSR_CKT_tbl['COSDACTCC']=='':
+#                debug("setting COSDACTCC")
+#                CSR_CKT_tbl['COSDACTCC']=line[216:224]
+#            else:
+#                if CSR_CKT_tbl['COSDACTCC']==line[216:224]:
+#                    debug("no change to COSDACTCC value")
+#                else:
+#                    debug("setting COSDACTCC to a new value")
+#                    
+#            if CSR_CKT_tbl['COSACT']=='':
+#                debug("setting COSACT")
+#                CSR_CKT_tbl['COSACT']=line[224:225]
+#            else:
+#                if CSR_CKT_tbl['COSACT']==line[224:225]:
+#                    debug("no change to COSACT value")
+#                else:
+#                    debug("setting COSACT to a new value")
+            
+                
+                
+ 
+        if CSR_CKT_exists:
+            CSR_CKT_tbl['COSDINSTCC']=line[61:69]
+            CSR_CKT_tbl['COSUSOCQTY']=line[69:75]
+            CSR_CKT_tbl['COSRES1']=line[75:77]
+            CSR_CKT_tbl['COS_USOC']=line[77:82]
+            CSR_CKT_tbl['COSRES2']=line[203:209]
+            CSR_CKT_tbl['COSDACTCC']=line[216:224]
+            CSR_CKT_tbl['COSACT']=line[224:225]
+            CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
+        else:
+            debug("CSR_CKT_exist is falses- were going to insert")
+            initialize_CKT_tbl();
+            debug("setting items for first time on CKT")
+            CSR_CKT_tbl['COSDINSTCC']=line[61:69]
+            CSR_CKT_tbl['COSUSOCQTY']=line[69:75]
+            CSR_CKT_tbl['COSRES1']=line[75:77]
+            CSR_CKT_tbl['COS_USOC']=line[77:82]
+            CSR_CKT_tbl['COSRES2']=line[203:209]
+            CSR_CKT_tbl['COSDACTCC']=line[216:224]
+            CSR_CKT_tbl['COSACT']=line[224:225]
+            CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
         
-        CSR_CKT_tbl['COSDINSTCC']=line[61:69]
-        CSR_CKT_tbl['COSUSOCQTY']=line[69:75]
-        CSR_CKT_tbl['COSRES1']=line[75:77]
-        CSR_CKT_tbl['COS_USOC']=line[77:82]
-        CSR_CKT_tbl['COSRES2']=line[203:209]
-        CSR_CKT_tbl['COSDACTCC']=line[216:224]
-        CSR_CKT_tbl['COSACT']=line[224:225]
-        CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
+
         
         if CSR_CKT_tbl['COSACT'] == 'D':
             pass #GOTO TOP
-        else:
-             process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
+        else:  
+            if CSR_CKT_exists:
+                debug("updating CKT")
+                process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
+                
+            else:
+                #doesnt exist
+                debug("inserting CKT")
+                process_insert_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
+                CSR_CKT_exists=True
+                
 #            MATCH CIRCUIT
 #              ON MATCH UPDATE COSDINSTCC COSUSOCQTY COSRES1
 #              ON MATCH UPDATE COS_USOC COSRES2 COSDACTCC COSACT
@@ -1170,7 +1316,7 @@ def process_LOCUSOC_36():
     global output_log
     global USOCCNT,UCODE,USOC_CNT, Level, record_id
  #USOC
-    initialize_CSR_USOC_tbl()
+    initialize_USOC_tbl()
     USOCCNT = USOCCNT + 1
     USOC_CNT = USOCCNT
     UCODE = '  '
@@ -1294,6 +1440,7 @@ def process_USOCDRVR_TAX():
 #        FIXFORM COS_CNTYTAX/1 COS_STSLSTAX/1 COS_LSLSTAX/1 COS_SURTAX/1
 #        FIXFORM COS_FRANTAX/1 COS_OTHERTAX/1 X3 X2 X4 X1 X8
         
+        debug("updating more items on CKT")
         CSR_CKT_tbl['COS_USOC']=line[72:77]
         CSR_CKT_tbl['COS_FEDTAX']=line[198:199]
         CSR_CKT_tbl['COS_STTAX']=line[199:200]
@@ -1309,7 +1456,8 @@ def process_USOCDRVR_TAX():
         if COSACT == 'D':
             pass #GOTO TOP
         else:
-             process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)        
+            debug("updating CKT")
+            process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)        
 #            update record
 
 
@@ -1427,6 +1575,7 @@ def process_USOCDRVR_PLN():
 #        FIXFORM CO_ADD_DIS_PL_IND/1 CO_SPL_OFR_PCTGE/Z5.2 CO_SPL_OFR_IDENT/26
 #        FIXFORM CO_S_OFR_END_DAT/8 CO_PL_TAR_TYP_INDR/1 X44
         
+        debug("updating even more items on CKT")
         CSR_CKT_tbl['COS_USOC']=line[72:77]
         CSR_CKT_tbl['CO_PLAN_ID']=line[77:103]
         CSR_CKT_tbl['CO_RQRD_PL_QTY']=line[103:108]
@@ -1449,6 +1598,7 @@ def process_USOCDRVR_PLN():
         if COSACT == 'D':
             pass  #GOTO TOP
         else:
+            debug("updating CKT")
             process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
 #            update data
  
@@ -1460,27 +1610,27 @@ def process_USOCDRVR_PLN():
 
 ## 
 def initialize_CKT_tbl():            
-    debug("****** procedure==>  "+whereami()+" ******")
+#    debug("****** procedure==>  "+whereami()+" ******")
     global  current_abbd_rec_key     
     
     CSR_CKT_tbl['ACNA']=current_abbd_rec_key['ACNA']    
     CSR_CKT_tbl['EOB_DATE']=current_abbd_rec_key['EOB_DATE']
     CSR_CKT_tbl['BAN']=current_abbd_rec_key['BAN']
     
-    
+     
     CSR_CKT_tbl['CDINSTCC']=''
+    CSR_CKT_tbl['CACT']=''
+    CSR_CKT_tbl['CDACTCC']=''
     CSR_CKT_tbl['FID']=''
     CSR_CKT_tbl['PSM']=''
     CSR_CKT_tbl['CIRCUIT']=''
     CSR_CKT_tbl['CKT_LTP']=''
-    CSR_CKT_tbl['CKT_MAN_BAN_UNITS']=''
-    CSR_CKT_tbl['CDACTCC']=''
-    CSR_CKT_tbl['CACT']=''
     CSR_CKT_tbl['NCODE']=''
     CSR_CKT_tbl['PIU']=''
     CSR_CKT_tbl['ASG']=''
     CSR_CKT_tbl['LCC']=''
     CSR_CKT_tbl['BAND']=''
+    CSR_CKT_tbl['CKR']=''
     CSR_CKT_tbl['TAR']=''
     CSR_CKT_tbl['RTAR']=''
     CSR_CKT_tbl['LLN']=''
@@ -1493,16 +1643,47 @@ def initialize_CKT_tbl():
     CSR_CKT_tbl['STN']=''
     CSR_CKT_tbl['SFN']=''    
     CSR_CKT_tbl['SFG']='' 
-    CSR_CKT_tbl['CKR']=''
     CSR_CKT_tbl['GSZ']=''
     CSR_CKT_tbl['NHN']='' 
     CSR_CKT_tbl['PTN']=''
     CSR_CKT_tbl['SBN']=''
+    CSR_CKT_tbl['COS_USOC']=''
+    CSR_CKT_tbl['COSUSOCQTY']=''
+    CSR_CKT_tbl['COSDINSTCC']=''
+    CSR_CKT_tbl['COSACT']=''
+    CSR_CKT_tbl['COSDACTCC']=''
+    CSR_CKT_tbl['COSRES1']=''
+    CSR_CKT_tbl['COSRES2']=''
+    CSR_CKT_tbl['COS_TAXGROUP']=''
+    CSR_CKT_tbl['COS_FEDTAX']=''
+    CSR_CKT_tbl['COS_STTAX']=''
+    CSR_CKT_tbl['COS_CITYTAX']=''
+    CSR_CKT_tbl['COS_CNTYTAX']=''  
+    CSR_CKT_tbl['COS_STSLSTAX']=''   
+    CSR_CKT_tbl['COS_LSLSTAX']=''  
+    CSR_CKT_tbl['COS_SURTAX']=''
+    CSR_CKT_tbl['COS_FRANTAX']=''
+    CSR_CKT_tbl['COS_OTHERTAX']='' 
+    CSR_CKT_tbl['CKT_MAN_BAN_UNITS']=''
+    CSR_CKT_tbl['CO_PLAN_ID']=''        
+    CSR_CKT_tbl['CO_RQRD_PL_QTY']=''      
+    CSR_CKT_tbl['CO_VAR_PL_QTY']=''      
+    CSR_CKT_tbl['CO_TRM_STRT_DAT']=''     
+    CSR_CKT_tbl['CO_TRM_END_DAT']=''     
+    CSR_CKT_tbl['CO_LNGTH_OF_TRM']=''
+    CSR_CKT_tbl['CO_PL_TYP_INDR']=''
+    CSR_CKT_tbl['CO_DSCNT_PCTGE']=''
+    CSR_CKT_tbl['CO_SYS_CPCTY']=''
+    CSR_CKT_tbl['CO_ADD_DIS_PL_IND']=''
+    CSR_CKT_tbl['CO_SPL_OFR_PCTGE']=''
+    CSR_CKT_tbl['CO_SPL_OFR_IDENT']=''
+    CSR_CKT_tbl['CO_S_OFR_END_DAT']=''
+    CSR_CKT_tbl['CO_PL_TAR_TYP_INDR']=''
     CSR_CKT_tbl['INPUT_RECORDS']=''
     
-    
+ 
 def initialize_LFID_tbl():
-    debug("****** procedure==>  "+whereami()+" ******")
+#    debug("****** procedure==>  "+whereami()+" ******")
     global current_abbd_rec_key 
 
     CSR_LFID_tbl['ACNA']=current_abbd_rec_key['ACNA']    
@@ -1515,7 +1696,7 @@ def initialize_LFID_tbl():
     CSR_LFID_tbl['INPUT_RECORDS']=''               
  
 def initialize_LOC_tbl():
-    debug("****** procedure==>  "+whereami()+" ******")
+#    debug("****** procedure==>  "+whereami()+" ******")
     global current_abbd_rec_key     
     
     CSR_LOC_tbl['ACNA']=current_abbd_rec_key['ACNA']    
@@ -1549,7 +1730,7 @@ def initialize_LOC_tbl():
        
     
 def  initialize_BCCBSPL_tbl():
-    debug("****** procedure==>  "+whereami()+" ******")
+#    debug("****** procedure==>  "+whereami()+" ******")
     global current_abbd_rec_key 
     
     CSR_BCCBSPL_tbl['ACNA']=current_abbd_rec_key['ACNA']    
@@ -1579,7 +1760,7 @@ def  initialize_BCCBSPL_tbl():
  
  
 def initialize_BILLREC_tbl():
-    debug("****** procedure==>  "+whereami()+" ******")
+#    debug("****** procedure==>  "+whereami()+" ******")
     global current_abbd_rec_key     
     
     CSR_BILLREC_tbl['ACNA']=current_abbd_rec_key['ACNA']    
@@ -1597,7 +1778,7 @@ def initialize_BILLREC_tbl():
     
     
 def initialize_ACTLREC_tbl():
-    debug("****** procedure==>  "+whereami()+" ******")
+#    debug("****** procedure==>  "+whereami()+" ******")
     global current_abbd_rec_key    
 
     CSR_ACTLREC_tbl['ACNA']=current_abbd_rec_key['ACNA']    
@@ -1614,7 +1795,7 @@ def initialize_ACTLREC_tbl():
     CSR_ACTLREC_tbl['INPUT_RECORDS']=''
  
 def initialize_CUFID_tbl():  
-    debug("****** procedure==>  "+whereami()+" ******")
+#    debug("****** procedure==>  "+whereami()+" ******")
     global current_abbd_rec_key  
 
     CSR_CUFID_tbl['ACNA']=current_abbd_rec_key['ACNA']    
@@ -1627,7 +1808,7 @@ def initialize_CUFID_tbl():
     CSR_CUFID_tbl['INPUT_RECORDS']=''
  
 def initialize_COSFID_tbl():  
-    debug("****** procedure==>  "+whereami()+" ******")
+#    debug("****** procedure==>  "+whereami()+" ******")
     global current_abbd_rec_key    
     
     CSR_COSFID_tbl['ACNA']=current_abbd_rec_key['ACNA']    
@@ -1640,7 +1821,7 @@ def initialize_COSFID_tbl():
     CSR_COSFID_tbl['INPUT_RECORDS']=''
  
 def initialize_UFID_tbl():        
-    debug("****** procedure==>  "+whereami()+" ******")
+#    debug("****** procedure==>  "+whereami()+" ******")
     global current_abbd_rec_key  
 
     CSR_UFID_tbl['ACNA']=current_abbd_rec_key['ACNA']    
@@ -1653,8 +1834,8 @@ def initialize_UFID_tbl():
     CSR_UFID_tbl['INPUT_RECORDS']=''
             
          
-def initialize_CSR_USOC_tbl():
-    debug("****** procedure==>  "+whereami()+" ******")
+def initialize_USOC_tbl():
+#    debug("****** procedure==>  "+whereami()+" ******")
     global current_abbd_rec_key  
 
     CSR_USOC_tbl['ACNA']=current_abbd_rec_key['ACNA']    
@@ -1700,8 +1881,8 @@ def initialize_CSR_USOC_tbl():
 
 
 
-def initialize_CSR_CKTUSOC_tbl():
-    debug("****** procedure==>  "+whereami()+" ******")
+def initialize_CKTUSOC_tbl():
+#    debug("****** procedure==>  "+whereami()+" ******")
     global current_abbd_rec_key  
 
     CSR_CKTUSOC_tbl['ACNA']=current_abbd_rec_key['ACNA']    
@@ -1715,17 +1896,17 @@ def initialize_CSR_CKTUSOC_tbl():
     CSR_CKTUSOC_tbl['CUACT']==''
     CSR_CKTUSOC_tbl['INPUT_RECORDS']=''
 
-def initialize_CSR_CFID_tbl():
-    debug("****** procedure==>  "+whereami()+" ******")
+def initialize_CFID_tbl():
+#    debug("****** procedure==>  "+whereami()+" ******")
     global current_abbd_rec_key 
  
     CSR_CFID_tbl['ACNA']=current_abbd_rec_key['ACNA']    
     CSR_CFID_tbl['EOB_DATE']=current_abbd_rec_key['EOB_DATE']
     CSR_CFID_tbl['BAN']=current_abbd_rec_key['BAN'] 
     
-    CSR_CFID_tbl['CFID']=line[72:76]
-    CSR_CFID_tbl['FID_DATA']=line[77:113]
-    CSR_CFID_tbl['INPUT_RECORDS']=str(record_id)
+    CSR_CFID_tbl['CFID']=''
+    CSR_CFID_tbl['FID_DATA']=''
+    CSR_CFID_tbl['INPUT_RECORDS']=''
 
 
     
@@ -1750,7 +1931,7 @@ def count_record(currec,unknownRec):
 
    
 def process_write_program_stats():
-    debug("****** procedure==>  "+whereami()+" ******")
+#    debug("****** procedure==>  "+whereami()+" ******")
     global record_counts
     global unknown_record_counts
     global CSR_KEY_cnt
@@ -1760,7 +1941,7 @@ def process_write_program_stats():
     idCnt=0
     writelog("**",output_log)
     writelog("**Processed record IDs and counts**",output_log)
-    writelog("record_id, count,output_log")
+    writelog("record_id, count",output_log)
     
     keylist = record_counts.keys()
     keylist.sort()
@@ -1800,16 +1981,18 @@ def process_write_program_stats():
 
 
 def process_ERROR_END(msg):
-    debug("****** procedure==>  "+whereami()+" ******")    
+#    debug("****** procedure==>  "+whereami()+" ******")    
     global output_log
     writelog("ERROR:"+msg,output_log)
     debug("ERROR:"+msg)
+    con.commit()
+    con.close()
     process_close_files()
-    raise Exception("ERROR:"+msg)
+#    raise Exception("ERROR:"+msg)
     
     
 def process_close_files():
-    debug("****** procedure==>  "+whereami()+" ******")
+#    debug("****** procedure==>  "+whereami()+" ******")
     global csr_input,  output_log
     global output_log
     
@@ -1848,5 +2031,9 @@ def endProg(msg):
 
 print "Starting Program"
 init()
+#try:
 main()
+#except Exception as e:
+#    process_ERROR_END(e.message)
+#else:
 endProg("-END OF PROGRAM-")

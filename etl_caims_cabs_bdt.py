@@ -216,19 +216,19 @@ def main():
     global goodKey      
     
 #DECLARE TABLE ARRAYS AND DICTIONARIES
-    BDT_BCCBBIL_tbl=collections.OrderedDict() 
+    BDT_BCCBBIL_tbl=dict() 
     BDT_BCCBBIL_DEFN_DICT=createTableTypeDict('CAIMS_BDT_BCCBBIL',con,output_log)
-    BDT_BALDTL_tbl=collections.OrderedDict()
+    BDT_BALDTL_tbl=dict()
     BDT_BALDTL_DEFN_DICT=createTableTypeDict('CAIMS_BDT_BALDTL',con,output_log)
-    BDT_CRNT1_tbl=collections.OrderedDict()
+    BDT_CRNT1_tbl=dict()
     BDT_CRNT1_DEFN_DICT=createTableTypeDict('CAIMS_BDT_CRNT1',con,output_log)  
-    BDT_CRNT2_tbl=collections.OrderedDict()
+    BDT_CRNT2_tbl=dict()
     BDT_CRNT2_DEFN_DICT=createTableTypeDict('CAIMS_BDT_CRNT2',con,output_log)
-    BDT_SWSPLCHG_tbl=collections.OrderedDict()
+    BDT_SWSPLCHG_tbl=dict()
     BDT_SWSPLCHG_DEFN_DICT=createTableTypeDict('CAIMS_BDT_SWSPLCHG',con,output_log)       
-    BDT_PMNTADJ_tbl=collections.OrderedDict()
+    BDT_PMNTADJ_tbl=dict()
     BDT_PMNTADJ_DEFN_DICT=createTableTypeDict('CAIMS_BDT_PMNTADJ',con,output_log)        
-    BDT_ADJMTDTL_tbl=collections.OrderedDict()
+    BDT_ADJMTDTL_tbl=dict()
     BDT_ADJMTDTL_DEFN_DICT=createTableTypeDict('CAIMS_BDT_ADJMTDTL',con,output_log)         
          
 
@@ -449,13 +449,14 @@ def process_TYP0101_ROOT():
     BDT_BCCBBIL_tbl['TACCNT']=line[107:108]
     BDT_BCCBBIL_tbl['TFGRP']=line[108:109]   
     BDT_BCCBBIL_tbl['TACCNT_FGRP']=translate_TACCNT_FGRP(BDT_BCCBBIL_tbl['TACCNT'],BDT_BCCBBIL_tbl['TFGRP'])  
-    
+    BDT_BCCBBIL_tbl['MAN_BAN_TYPE']=line[218:219]
+    BDT_BCCBBIL_tbl['UNB_SWA_PROV']=line[219:220]
+    BDT_BCCBBIL_tbl['MPB']=line[224:225]
     BDT_BCCBBIL_tbl['BILL_DATE']=BDT_BCCBBIL_tbl['JDATE']
     BDT_BCCBBIL_tbl['EOBDATEA']=BDT_BCCBBIL_tbl['EOB_DATE']
     BDT_BCCBBIL_tbl['EOBDATECC']=BDT_BCCBBIL_tbl['EOBDATEA']
     BDT_BCCBBIL_tbl['BILLDATECC']=BDT_BCCBBIL_tbl['BILL_DATE']
     BDT_BCCBBIL_tbl['CAIMS_REL']='B'
-    BDT_BCCBBIL_tbl['MPB']=line[224:225]
     BDT_BCCBBIL_tbl['INPUT_RECORDS']=str(record_id)
  
     process_insert_table("CAIMS_BDT_BCCBBIL", BDT_BCCBBIL_tbl,BDT_BCCBBIL_DEFN_DICT,con,output_log)
@@ -853,7 +854,8 @@ def process_TYP2505_BALDTL():
     if baldue_rec:
         process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,output_log) 
     else:
-        writelog("WARNING: The BALDTL record "+str(record_id)+" has no associated BALDUE record.",output_log)
+        process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,output_log) 
+        writelog("WARNING: The BALDTL record "+str(record_id)+" has no associated BALDUE record. INSERTING ANYWAY.",output_log)
     
     baldtl_rec=True
 
@@ -957,6 +959,8 @@ def  initialize_BCCBBIL_tbl():
     BDT_BCCBBIL_tbl['TACCNT']=''
     BDT_BCCBBIL_tbl['TFGRP']=''
     BDT_BCCBBIL_tbl['TACCNT_FGRP']=''
+    BDT_BCCBBIL_tbl['MAN_BAN_TYPE']=''
+    BDT_BCCBBIL_tbl['UNB_SWA_PROV']=''
     BDT_BCCBBIL_tbl['BILL_DATE']=''
     BDT_BCCBBIL_tbl['EOBDATEA']=''
     BDT_BCCBBIL_tbl['EOBDATECC']=''
@@ -977,8 +981,7 @@ def  initialize_BCCBBIL_tbl():
     BDT_BCCBBIL_tbl['BAL']=''
     BDT_BCCBBIL_tbl['ADLOC']=''
     BDT_BCCBBIL_tbl['INPUT_RECORDS']=''
-    
-    
+ 
     
 def  initialize_CRNT1_tbl():
     debug("****** procedure==>  "+whereami()+" ******")
@@ -1121,6 +1124,8 @@ def process_ERROR_END(msg):
     debug("****** procedure==>  "+whereami()+" ******")
     writelog("ERROR:"+msg)
     debug("ERROR:"+msg)
+    con.commit()
+    con.close()
     process_close_files()
     raise "ERROR:"+msg
     
@@ -1165,5 +1170,9 @@ def endProg(msg):
 
 print "Starting Program"
 init()
-main()
-endProg("-END OF PROGRAM-")
+try:
+    main()
+except Exception as e:
+    process_ERROR_END(e.message)
+else:
+    endProg("-END OF PROGRAM-")
