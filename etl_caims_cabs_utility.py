@@ -45,6 +45,74 @@ def format_date(datestring):
         return "TO_DATE('"+datestring[4:6]+"-"+MONTH_DICT[datestring[2:4]]+"-"+"20"+datestring[:2]+"','DD-MON-YY')"  
     elif dtSize==8:
         return "TO_DATE('"+datestring[:4]+"-"+datestring[4:6]+"-"+"20"+datestring[6:2]+"','YYYY-MM-DD')"     
+
+
+def process_check_exists(tbl_name, tbl_rec,tbl_dic,con,output_log):
+#(process_check_exists("CAIMS_BDT_BALDTL", tmpTblRec, BDT_BALDTL_DEFN_DICT,con,output_log)):
+#return true or false
+    sqlQuery="SELECT ACNA FROM "+tbl_name+" WHERE "
+    
+    
+    
+    for key, value in tbl_rec.items() :
+      
+        nulVal=False
+        if str(value).rstrip(' ') == '':
+            nulVal=True
+               
+        try:
+            if key == 'ACNA':
+                sqlQuery+="ACNA='"+str(value).rstrip(' ')+"' AND "
+            elif key == 'EOB_DATE':
+                sqlQuery+="EOB_DATE="+format_date(value)+" AND "
+            elif key == 'BAN':
+                sqlQuery+="BAN='"+str(value).rstrip(' ')+"' AND "
+            #####STRINGS##############
+            elif tbl_dic[key] in ('c|STRING','x|STRING'):
+                if not nulVal:
+                    sqlQuery+=str(key)+"='"+str(value).rstrip(' ')+"' AND "
+            #####DATETIME#############
+            elif tbl_dic[key] in ('c|DATETIME','x|DATETIME'):
+#                print "date key and value:"+str(key)+" "+str(value)
+                if not nulVal:
+                    sqlQuery+=str(key)+"="+format_date(value)+" AND "    
+            #####NUMBERS#############               
+            elif tbl_dic[key] == ('c|NUMBER','x|NUMBER'):
+                if not nulVal:                   
+                    sqlQuery+=str(key)+"="+str(convertnumber(value))+"' AND "       
+            else:
+#                process_ERROR_END("ERROR: process_update_table could not determine data type for " +tbl_dic[key] + " in the "+tbl_name+" table.")  
+                raise Exception("ERROR: process_check_exists could not determine data type for " +tbl_dic[key] + " in the "+tbl_name+" table.") 
+        except KeyError as e:
+            writelog("WARNING: Column "+key+" not found in the "+tbl_name+" table.  Skipping.",output_log)
+            writelog("KeyError:"+e.message,output_log)
+                
+    sqlQuery=sqlQuery.rstrip(' ').rstrip('AND')
+     
+        
+    chkCurs=con.cursor()
+ 
+    result=''
+    try:
+        chkCurs.execute(sqlQuery)
+        for x in chkCurs:
+            result=x
+        con.commit()
+#        print "Number of rows updated: " + updCurs.count??????
+        con.commit()
+        writelog("SUCCESSFUL RECORD CHECK TO  "+tbl_name+".",output_log)
+        
+    except cx_Oracle.DatabaseError, exc:
+        if ("%s" % exc.message).startswith('ORA-:'):
+            writelog("ERROR:"+str(exc.message),output_log)
+            writelog("UPDATE SQL Causing problem:"+updateSQL,output_log)
+    finally:
+        chkCurs.close()
+
+    if len(result) > 0:
+        return True
+
+
     
 def process_insert_table(tbl_name, tbl_rec,tbl_dic,con,output_log):
     
@@ -96,7 +164,6 @@ def process_insert_table(tbl_name, tbl_rec,tbl_dic,con,output_log):
         writelog("SUCCESSFUL INSERT INTO "+tbl_name+".",output_log)
     except cx_Oracle.DatabaseError , e:
         if ("%s" % e.message).startswith('ORA-00001:'):
-            writelog("test",output_log)
             writelog("****** DUPLICATE INSERT INTO "+str(tbl_name)+"*****************",output_log)
             writelog("Insert SQL: "+str(insSQL),output_log)
         else:
@@ -152,11 +219,11 @@ def process_update_table(tbl_name, tbl_rec,tbl_dic,con,output_log):
 #                    process_ERROR_END("ERROR: "+key+" is a unique index DATETIME value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
                     raise Exception("ERROR: "+key+" is a unique index DATETIME value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name) 
                 else:
-                   whereClause+=str(key)+"='"+format_date(value)+"' AND "  
+                    whereClause+=str(key)+"="+format_date(value)+" AND "  
                    
             #####NUMBERS#############               
             elif tbl_dic[key] =='c|NUMBER':
-                if not nulVal:                   
+                if not nulVal:  
                     updateSQL+=str(key)+"="+str(convertnumber(value))+","        
             elif tbl_dic[key] =='x|NUMBER':        
                 if nulVal:
@@ -213,7 +280,7 @@ def convertnumber(num) :
 #        return 987.65
     elif len(str(newNum)) == 1:
         hundredthsPlaceSymbol=DIGIT_DICT[str(newNum)]
-        if hundredthsPlaceSymbol in NEGATIVE_NUMS:
+        if newNum in NEGATIVE_NUMS:
             return "-0.0"+hundredthsPlaceSymbol
         else:
             return "0.0"+hundredthsPlaceSymbol

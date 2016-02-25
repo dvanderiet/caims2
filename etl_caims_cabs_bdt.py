@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 #!/usr/bin/python
 """
-PROGRAM NAME:     etl_caims_cabs_bdt.py                                  
+PROGRAM NAME:     etl_caims_cabs_bdt.py                                     
 LOCATION:                      
 PROGRAMMER(S):    Dan VandeRiet                                 
 DESCRIPTION:      CAIMS Extract/Transformation/Load program for Bill Data Tape
@@ -36,7 +36,6 @@ REASON:
 """
 
 import datetime
-import collections
 startTM=datetime.datetime.now();
 import cx_Oracle
 import sys
@@ -45,8 +44,8 @@ import platform
 import os
 
 ###IMPORT COMMON/SHARED UTILITIES
-from etl_caims_cabs_utility import whereami, process_insert_table, process_update_table, writelog, \
-                                   createTableTypeDict,translate_TACCNT_FGRP  
+from etl_caims_cabs_utility import  process_insert_table, process_update_table, writelog, \
+                                   createTableTypeDict,translate_TACCNT_FGRP ,process_check_exists  
 
 settings = ConfigParser.ConfigParser();
 settings.read('settings.ini')
@@ -58,7 +57,7 @@ con=cx_Oracle.connect(settings.get('OracleSettings','OraCAIMSUser'),settings.get
     
 "CONSTANTS"
 #Set Debug Trace Below - Set to trun to turn on
-DEBUGISON=True
+#DEBUGISON=False
 
 if str(platform.system()) == 'Windows': 
     OUTPUT_DIR = settings.get('GlobalSettings','WINDOWS_LOG_DIR');
@@ -66,8 +65,8 @@ else:
     OUTPUT_DIR = settings.get('GlobalSettings','LINUX_LOG_DIR');
     
 #set to true to get debug statements
-if DEBUGISON:
-    DEBUG_LOG=open(os.path.join(OUTPUT_DIR,settings.get('BDTSettings','BDT_DEBUG_FILE_NM')),"w")
+#if DEBUGISON:
+#    DEBUG_LOG=open(os.path.join(OUTPUT_DIR,settings.get('BDTSettings','BDT_DEBUG_FILE_NM')),"w")
 
 
 
@@ -127,14 +126,14 @@ STAR_LINE='*********************************************************************
 
    
 "TRANSLATERS"
-
-def debug(msg):
-    if DEBUGISON:
-        DEBUG_LOG.write("\n"+str(msg))
+#
+#def debug(msg):
+#    if DEBUGISON:
+#        DEBUG_LOG.write("\n"+str(msg))
         
     
 def init():
-    debug("****** procedure==>  "+whereami()+" ******")
+    #debug("****** procedure==>  "+whereami()+" ******")
     
     global bdt_input 
     global record_id,output_log
@@ -179,7 +178,7 @@ def init():
     del headerLine,cycl_yy,cycl_mmdd,cycl_time
     
 def main():
-    debug("****** procedure==>  "+whereami()+" ******")
+    #debug("****** procedure==>  "+whereami()+" ******")
     #BDT_config.initialize_BDT() 
     global record_type
     global line,output_log
@@ -320,7 +319,7 @@ def main():
 
 
 def log_footer_rec_info(): 
-    debug("****** procedure==>  "+whereami()+" ******")
+    #debug("****** procedure==>  "+whereami()+" ******")
     global record_id,output_log
     
     BAN_cnt=line[6:12]
@@ -336,7 +335,7 @@ def log_footer_rec_info():
 
 
 def process_bill_records():
-    debug("****** procedure==>  "+whereami()+" ******")
+    #debug("****** procedure==>  "+whereami()+" ******")
 #    global BDT_BCCBBIL_tbl
     global record_id,output_log
     global firstBillingRec
@@ -373,9 +372,9 @@ def process_bill_records():
     elif record_id == '051301' and tstx != 'XX':     
         process_TYP05131_CRNT2()  
         
-    elif record_id in ('051400','051500','051600','052500','055200','055300','055400','055800'):  
+    elif record_id in ('051400','051500','051600','052500','055200','055300','055400','055800','052300','055600','052400','055700'):  
         process_TYP0514_SWSPLCHG()
- 
+
     elif record_id == '150500':
         process_TYP1505_PMNTADJ()
     
@@ -386,6 +385,9 @@ def process_bill_records():
         
     elif record_id =='250500':
         process_TYP2505_BALDTL()
+    
+    elif record_id =='271500':
+        process_TYP2715_BALDTL()
         
     else:  #UNKNOWN RECORDS
         unknownRecord=True
@@ -397,7 +399,7 @@ def process_bill_records():
     
 def process_getkey():
     global badKey
-    debug("****** procedure==>  "+whereami()+" ******")
+    #debug("****** procedure==>  "+whereami()+" ******")
     
     if line[6:11].rstrip(' ') == '' or line[17:30].rstrip(' ') == '' or line[11:17].rstrip(' ') == '':
         badKey=True
@@ -425,15 +427,11 @@ def reset_record_flags():
    
     
 def process_TYP0101_ROOT():
-    debug("****** procedure==>  "+whereami()+" ******")
+    #debug("****** procedure==>  "+whereami()+" ******")
     global firstBillingRec,output_log
     global verno
 #    global BDT_BCCBBIL_tbl,  BDT_BCCBBIL_DEFN_DICT  
     global root_rec, record_id
-    
-   
-    
-    
     
     initialize_BCCBBIL_tbl()
 #    "record_id doesn't need populated"
@@ -465,7 +463,7 @@ def process_TYP0101_ROOT():
  
     
 def process_TYP0505_BO_CODE(): 
-    debug("****** procedure==>  "+whereami()+" ******")
+    #debug("****** procedure==>  "+whereami()+" ******")
     "BO_CODE"
     
 #    global BDT_BCCBBIL_tbl  
@@ -491,7 +489,7 @@ def process_TYP0505_BO_CODE():
     "no flag to set - part of root"
 
 def process_TYP0510_BALDUE():
-    debug("****** procedure==>  "+whereami()+" ******")
+    #debug("****** procedure==>  "+whereami()+" ******")
     "BALDUE"   
 #    global BDT_BCCBBIL_tbl 
     global baldue_rec,output_log
@@ -530,54 +528,85 @@ def process_TYP0510_BALDUE():
         
     baldue_rec=True
  
+ 
 
 def process_TYP0512_CRNT1():    
-    debug("****** procedure==>  "+whereami()+"(record id:"+str(record_id)+") ******")
+    #debug("****** procedure==>  "+whereami()+"(record id:"+str(record_id)+") ******")
 #    global BDT_CRNT1_tbl 
-    global BDT_CRNT1_DEFN_DICT 
+    global BDT_CRNT1_DEFN_DICT, BDT_BALDTL_DEFN_DICT 
     global crnt1_051200_rec,crnt1_055000_rec,output_log
  
     #?not sure why record_id is recognized in this para when it is not declared global???
     
-    initialize_CRNT1_tbl()
-    
-    if not root_rec or not baldue_rec:
-        writelog("ERROR???: Writing CRNT1 record but missing parent records.",output_log)
- 
-   
-#    BDT_CRNT1_tbl
-#    BUILD pieces here
-    BDT_CRNT1_tbl['REF_NUM']=line[61:71]
-    BDT_CRNT1_tbl['INVDT1CC']=line[71:76]
-    BDT_CRNT1_tbl['SUBSTATE']=line[77:79]
-    BDT_CRNT1_tbl['MONCHGFROMCC']=line[79:87] 
-    BDT_CRNT1_tbl['MONCHGTHRUCC']=line[87:95]  
-    BDT_CRNT1_tbl['DTINVDUECC']=line[95:103] 
-    BDT_CRNT1_tbl['LPC']=line[103:114] 
-    BDT_CRNT1_tbl['TOT_MRC']=line[136:147] 
-    BDT_CRNT1_tbl['MRCIR']=line[147:158]
-    BDT_CRNT1_tbl['MRCIA']=line[158:169]
-    
-    if record_id == '051200':
-        BDT_CRNT1_tbl['MRCLO']=line[180:191]
-        BDT_CRNT1_tbl['STLVCC']=line[222:226] 
-        crnt1_051200_rec+=1
-    elif record_id == '055000':
-        BDT_CRNT1_tbl['MRCLO']=line[169:180]
-        BDT_CRNT1_tbl['STLVCC']=line[217:221 ]         
-        crnt1_055000_rec+=1
+    #If Substate == 'XX' GOTO TOP    
+    if line[77:79] =='XX':
+        pass
     else:
-        process_ERROR_END("ERROR: Expected record_id 051200 or 055000 but recieved a record_id of "+str(record_id))
-
     
-    BDT_CRNT1_tbl['INPUT_RECORDS']=str(record_id)
+        initialize_CRNT1_tbl()
+        
+        if not root_rec or not baldue_rec:
+            writelog("ERROR???: Writing CRNT1 record but missing parent records.",output_log)
+     
+    #    BDT_CRNT1_tbl
+    #    BUILD pieces here
+        BDT_CRNT1_tbl['REF_NUM']=line[61:71]
+        BDT_CRNT1_tbl['INVDT1CC']=line[71:76]
+        BDT_CRNT1_tbl['SUBSTATE']=line[77:79]
+        BDT_CRNT1_tbl['MONCHGFROMCC']=line[79:87] 
+        BDT_CRNT1_tbl['MONCHGTHRUCC']=line[87:95]  
+        BDT_CRNT1_tbl['DTINVDUECC']=line[95:103] 
+        BDT_CRNT1_tbl['LPC']=line[103:114] 
+        BDT_CRNT1_tbl['TOT_MRC']=line[136:147] 
+        BDT_CRNT1_tbl['MRCIR']=line[147:158]
+        BDT_CRNT1_tbl['MRCIA']=line[158:169]
+        
+        if record_id == '051200':
+            BDT_CRNT1_tbl['MRCLO']=line[180:191]
+            BDT_CRNT1_tbl['STLVCC']=line[222:226] 
+            crnt1_051200_rec+=1
+        elif record_id == '055000':
+            BDT_CRNT1_tbl['MRCLO']=line[169:180]
+            BDT_CRNT1_tbl['STLVCC']=line[217:221 ]         
+            crnt1_055000_rec+=1
+        else:
+            process_ERROR_END("ERROR: Expected record_id 051200 or 055000 but recieved a record_id of "+str(record_id))
+    
+        BDT_CRNT1_tbl['INPUT_RECORDS']=str(record_id)
+        
+        
+    #NEW CODE TO FIX BALDTL
+    
+     
+        if baldtl_rec == False:
 
-    process_insert_table("CAIMS_BDT_CRNT1", BDT_CRNT1_tbl, BDT_CRNT1_DEFN_DICT,con,output_log)
-               
+            initialize_BALDTL_tbl()
+            BDT_BALDTL_tbl['DINVDATECC']=BDT_CRNT1_tbl['INVDT1CC'] 
+            if BDT_CRNT1_tbl['SUBSTATE'].rstrip(' ') == '':
+                BDT_BALDTL_tbl['DSTATE'] = 'nl'
+            else:
+                BDT_BALDTL_tbl['DSTATE']=BDT_CRNT1_tbl['SUBSTATE']  
+             
+            BDT_BALDTL_tbl['DPREVBAL']=0;
+            BDT_BALDTL_tbl['DPAYMNT']=0;
+            BDT_BALDTL_tbl['DINV_REF']=BDT_CRNT1_tbl['REF_NUM']
+            BDT_BALDTL_tbl['DADJT']=0;
+            BDT_BALDTL_tbl['DBAL']=0;
+            BDT_BALDTL_tbl['LPC_APPLIED']=0;
+            BDT_BALDTL_tbl['LPC_INV_IR']=0;
+            BDT_BALDTL_tbl['LPC_INV_IA']=0;
+            BDT_BALDTL_tbl['LPC_INV_ND']=0;
+            BDT_BALDTL_tbl['INPUT_RECORDS']=str(record_id);
+            process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,output_log)
+            baldtl_rec ==True
+        
+    #END NEW CODE TO FIX BALDTL
+        process_insert_table("CAIMS_BDT_CRNT1", BDT_CRNT1_tbl, BDT_CRNT1_DEFN_DICT,con,output_log)
+                   
  
     
 def process_TYP0513_CRNT2():    
-    debug("****** procedure==>  "+whereami()+"(record id:"+str(record_id)+") ******")
+    #debug("****** procedure==>  "+whereami()+"(record id:"+str(record_id)+") ******")
 #    global BDT_CRNT2_tbl 
 #    global BDT_CRNT2_DEFN_DICT 
     global output_log
@@ -623,10 +652,38 @@ def process_TYP0513_CRNT2():
         BDT_CRNT2_tbl['STLVCC2']=line[205:209]
         BDT_CRNT2_tbl['USGLO']=line[209:220]
         process_insert_table("CAIMS_BDT_CRNT2", BDT_CRNT2_tbl, BDT_CRNT2_DEFN_DICT,con,output_log)
+
+
+    #NEW CODE TO FIX BALDTL
+    #Not sure if this code is ever hit?
+        if baldtl_rec == False:
+            initialize_BALDTL_tbl()
+            BDT_BALDTL_tbl['DINVDATECC']=BDT_CRNT2_tbl['INVDT2CC']
+            if BDT_CRNT2_tbl['SUBSTATE2'].rstrip(' ') == '':
+                BDT_BALDTL_tbl['DSTATE'] = 'nl'
+            else:
+                BDT_BALDTL_tbl['DSTATE']=BDT_CRNT2_tbl['SUBSTATE2']
+            BDT_BALDTL_tbl['DPREVBAL']=0;
+            BDT_BALDTL_tbl['DPAYMNT']=0;
+            BDT_BALDTL_tbl['DINV_REF']=BDT_CRNT2_tbl['REF_NUM']
+            BDT_BALDTL_tbl['DADJT']=0;
+            BDT_BALDTL_tbl['DBAL']=0;
+            BDT_BALDTL_tbl['LPC_APPLIED']=0;
+            BDT_BALDTL_tbl['LPC_INV_IR']=0;
+            BDT_BALDTL_tbl['LPC_INV_IA']=0;
+            BDT_BALDTL_tbl['LPC_INV_ND']=0;
+            BDT_BALDTL_tbl['INPUT_RECORDS']=str(record_id);
+            process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,output_log) 
+            baldtl_rec ==True
+    #END NEW CODE TO FIX BALDTL
+
+
+
+
     
    
 def process_TYP05131_CRNT2():    
-    debug("****** procedure==>  "+whereami()+" ******")
+    #debug("****** procedure==>  "+whereami()+" ******")
 #    global BDT_CRNT2_tbl 
 #    global BDT_CRNT2_DEFN_DICT 
     global output_log
@@ -652,7 +709,7 @@ def process_TYP05131_CRNT2():
                   
     
 def process_TYP0514_SWSPLCHG():  
-    debug("****** procedure==>  "+whereami()+"(record id:"+str(record_id)+") ******")
+    #debug("****** procedure==>  "+whereami()+"(record id:"+str(record_id)+") ******")
 #    global BDT_SWSPLCHG_tbl       
 #    global BDT_SWSPLCHG_DEFN_DICT 
     global swsplchg_rec 
@@ -676,7 +733,9 @@ def process_TYP0514_SWSPLCHG():
         BDT_SWSPLCHG_tbl['CHGFROMDTCC']=line[86:94]
         BDT_SWSPLCHG_tbl['CHGTHRUDTCC']=line[94:102] 
         
-        if record_id in ('052500','055800'):
+ 
+
+        if record_id in ('052500','055800','052300','052300','055600','052400','055700'):
             BDT_SWSPLCHG_tbl['MAC_ACCTYP']='0'
             BDT_SWSPLCHG_tbl['MAC_FACTYP']='0'
             BDT_SWSPLCHG_tbl['MACIR']=line[102:113]
@@ -684,8 +743,7 @@ def process_TYP0514_SWSPLCHG():
             BDT_SWSPLCHG_tbl['MACIRIA']=line[124:135]
             BDT_SWSPLCHG_tbl['MACIAIA']=line[135:146]
             BDT_SWSPLCHG_tbl['MACLOC']=line[146:157]
-            BDT_SWSPLCHG_tbl['MACND']=line[157:168]
-            BDT_SWSPLCHG_tbl['MAC_RECTYP']=25
+
         else:        
             BDT_SWSPLCHG_tbl['MAC_ACCTYP']=line[102:103]
             BDT_SWSPLCHG_tbl['MAC_FACTYP']=line[103:104]
@@ -710,6 +768,12 @@ def process_TYP0514_SWSPLCHG():
             BDT_SWSPLCHG_tbl['MAC_RECTYP']=16
         elif record_id in ('051500','055300'):
             BDT_SWSPLCHG_tbl['MAC_RECTYP']=15
+        elif record_id in ('052500','055800'):
+            BDT_SWSPLCHG_tbl['MAC_RECTYP']=25
+        elif record_id in ('052300','055600'):
+            BDT_SWSPLCHG_tbl['MAC_RECTYP']=23
+        elif record_id in ('052400','055700' ):
+            BDT_SWSPLCHG_tbl['MAC_RECTYP']=24
     
     
         BDT_SWSPLCHG_tbl['INPUT_RECORDS']=str(record_id)
@@ -717,17 +781,11 @@ def process_TYP0514_SWSPLCHG():
         process_insert_table("CAIMS_BDT_SWSPLCHG", BDT_SWSPLCHG_tbl, BDT_SWSPLCHG_DEFN_DICT,con,output_log)
         
         swsplchg_rec=True
-
-
+        
     
 
-
-
-
-
-
 def process_TYP1505_PMNTADJ():
-    debug("****** procedure==>  "+whereami()+" ******")
+    #debug("****** procedure==>  "+whereami()+" ******")
 #    global BDT_PMNTADJ_tbl
     global pmntadj_rec
 #    global BDT_PMNTADJ_DEFN_DICT
@@ -750,13 +808,40 @@ def process_TYP1505_PMNTADJ():
     BDT_PMNTADJ_tbl['AMOUNT']=line[149:160]
     BDT_PMNTADJ_tbl['INPUT_RECORDS']=str(record_id)
     
+    #NEW CODE TO FIX BALDTL
+    #Not sure if this code is ever hit?
+    if baldtl_rec == False:
+        initialize_BALDTL_tbl()
+        BDT_BALDTL_tbl['DINVDATECC']=BDT_PMNTADJ_tbl['AINV_DATE'] 
+        if BDT_PMNTADJ_tbl['APSTATE'].rstrip(' ') == '':
+            BDT_BALDTL_tbl['DSTATE'] = 'nl'
+        else:
+            BDT_BALDTL_tbl['DSTATE']=BDT_PMNTADJ_tbl['APSTATE']
+        
+        BDT_BALDTL_tbl['DPREVBAL']=0;
+        BDT_BALDTL_tbl['DPAYMNT']=0;
+        BDT_BALDTL_tbl['DINV_REF']=BDT_PMNTADJ_tbl['AINV_REF']
+        BDT_BALDTL_tbl['DADJT']=0;
+        BDT_BALDTL_tbl['DBAL']=0;
+        BDT_BALDTL_tbl['LPC_APPLIED']=0;
+        BDT_BALDTL_tbl['LPC_INV_IR']=0;
+        BDT_BALDTL_tbl['LPC_INV_IA']=0;
+        BDT_BALDTL_tbl['LPC_INV_ND']=0;
+        BDT_BALDTL_tbl['INPUT_RECORDS']=str(record_id);
+        process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,output_log)
+        baldtl_rec ==True
+    #END NEW CODE TO FIX BALDTL
+
+
+
+
 
     process_insert_table("CAIMS_BDT_PMNTADJ", BDT_PMNTADJ_tbl, BDT_PMNTADJ_DEFN_DICT,con,output_log) 
 
     pmntadj_rec=True
 
 def process_TYP2005_ADJMTDTL():                    
-    debug("****** procedure==>  "+whereami()+" ******")
+    #debug("****** procedure==>  "+whereami()+" ******")
 #    global BDT_ADJMTDTL_tbl
     global adjmtdtl_rec, record_id
  
@@ -786,7 +871,7 @@ def process_TYP2005_ADJMTDTL():
     
     
 def process_TYP20051_ADJMTDTL():
-    debug("****** procedure==>  "+whereami()+" ******") 
+    #debug("****** procedure==>  "+whereami()+" ******") 
 #    global BDT_ADJMTDTL_tbl
     global adjmtdtl_rec
 #    global BDT_ADJMTDTL_DEFN_DICT
@@ -817,6 +902,36 @@ def process_TYP20051_ADJMTDTL():
     
     BDT_ADJMTDTL_tbl['INPUT_RECORDS']+="*"+str(record_id)
     
+    #NEW CODE TO FIX BALDTL
+    #Not sure if this code is ever hit?
+    if baldtl_rec == False:
+        initialize_BALDTL_tbl()
+        BDT_BALDTL_tbl['DINVDATECC']=BDT_ADJMTDTL_tbl['AINV_DATE'] 
+        if BDT_ADJMTDTL_tbl['APSTATE'] .rstrip(' ') == '':
+            BDT_BALDTL_tbl['DSTATE'] = 'nl'
+        else:
+            BDT_BALDTL_tbl['DSTATE']=BDT_ADJMTDTL_tbl['APSTATE']        
+        
+        
+        BDT_BALDTL_tbl['DSTATE']=BDT_ADJMTDTL_tbl['APSTATE']
+        BDT_BALDTL_tbl['DPREVBAL']=0;
+        BDT_BALDTL_tbl['DPAYMNT']=0;
+        BDT_BALDTL_tbl['DINV_REF']=BDT_ADJMTDTL_tbl['AINV_REF']
+        BDT_BALDTL_tbl['DADJT']=0;
+        BDT_BALDTL_tbl['DBAL']=0;
+        BDT_BALDTL_tbl['LPC_APPLIED']=0;
+        BDT_BALDTL_tbl['LPC_INV_IR']=0;
+        BDT_BALDTL_tbl['LPC_INV_IA']=0;
+        BDT_BALDTL_tbl['LPC_INV_ND']=0;
+        BDT_BALDTL_tbl['INPUT_RECORDS']=str(record_id);
+        process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,output_log)
+        baldtl_rec ==True
+    #END NEW CODE TO FIX BALDTL
+    
+    
+    
+    
+    
     if prev_record_id == '200500':
         process_insert_table("CAIMS_BDT_ADJMTDTL", BDT_ADJMTDTL_tbl, BDT_ADJMTDTL_DEFN_DICT,con,output_log)
     else:
@@ -825,7 +940,7 @@ def process_TYP20051_ADJMTDTL():
     adjmtdtl_rec=True   
     
 def process_TYP2505_BALDTL():                
-    debug("****** procedure==>  "+whereami()+" ******")
+    #debug("****** procedure==>  "+whereami()+" ******")
     "250500"
     global BDT_BALDTL_tbl 
     global baldtl_rec
@@ -839,31 +954,80 @@ def process_TYP2505_BALDTL():
 #FIXFORM DINV_REF/A10 DINV_DATE/A5 DSTATE/A2 X38
 #FIXFORM DPREVBAL/Z11.2 DPAYMNT/Z11.2 DADJT/Z11.2 DBAL/Z11.2
 #FIXFORM X4 LPC_APPLIED/Z11.2
-  
+#    COMPUTE
+#    INVDATECC=INVDATECC
+#    ASTATE=ASTATE   (ROOT SEGMENT)
+     
+#    BDT_BCCBBIL_tbl['ASTATE'] 
+#    BDT_BCCBBIL_tbl['INVDATECC']
     
     BDT_BALDTL_tbl['DINV_REF']=line[61:71]
-    BDT_BALDTL_tbl['DINVDATECC']=line[71:76]    
-    BDT_BALDTL_tbl['DSTATE']=line[76:78] 
+    BDT_BALDTL_tbl['DINVDATECC']=line[71:76]
+    if line[76:78].rstrip(' ') == '':
+        BDT_BALDTL_tbl['DSTATE']='nl'        
+    else:
+        BDT_BALDTL_tbl['DSTATE']=line[76:78]
+        
     BDT_BALDTL_tbl['DPREVBAL']=line[116:127]
     BDT_BALDTL_tbl['DPAYMNT']=line[127:138]
     BDT_BALDTL_tbl['DADJT']=line[138:149]
     BDT_BALDTL_tbl['DBAL']=line[149:160]
     BDT_BALDTL_tbl['LPC_APPLIED']=line[164:175]
-    BDT_BALDTL_tbl['INPUT_RECORDS']=str(record_id)
+    #default the LPC fields to 0.   
+    BDT_BALDTL_tbl['LPC_INV_IR']=0
+    BDT_BALDTL_tbl['LPC_INV_IA']=0
+    BDT_BALDTL_tbl['LPC_INV_ND']=0
+    BDT_BALDTL_tbl['INPUT_RECORDS']=str(record_id);
     
-    if baldue_rec:
-        process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,output_log) 
+    
+    tmpTblRec={}
+    tmpTblRec['ACNA']=BDT_BALDTL_tbl['ACNA']
+    tmpTblRec['BAN']=BDT_BALDTL_tbl['BAN']
+    tmpTblRec['EOB_DATE']=BDT_BALDTL_tbl['EOB_DATE']
+    tmpTblRec['DINVDATECC']=BDT_BALDTL_tbl['DINVDATECC']
+    tmpTblRec['DSTATE']=BDT_BALDTL_tbl['DSTATE']
+    
+                
+    if (process_check_exists("CAIMS_BDT_BALDTL", tmpTblRec, BDT_BALDTL_DEFN_DICT,con,output_log)):   
+        process_update_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,output_log)
     else:
-        process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,output_log) 
-        writelog("WARNING: The BALDTL record "+str(record_id)+" has no associated BALDUE record. INSERTING ANYWAY.",output_log)
+        if baldue_rec:
+            process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,output_log) 
+        else:
+            process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,output_log) 
+            writelog("WARNING: The BALDTL record "+str(record_id)+" has no associated BALDUE record. INSERTING ANYWAY.",output_log)
     
     baldtl_rec=True
 
+def process_TYP2715_BALDTL():
+    #debug("****** procedure==>  "+whereami()+" ******")
+    "271500"
+    #Add this paragraph for combined company data.
+    global BDT_BALDTL_tbl 
+    global baldtl_rec
+    global record_id
+    global output_log
+    # FIXFORM X-225 ACNA/A5 EOB_DATE/6 BAN/A13 X6 X25 X10
+    #FIXFORM DINV_DATE/A5   # same as DINVDATECC
+    #FIXFORM X57 DSTATE/A2
+    #FIXFORM LPC_INV_IR/Z11.2
+    #FIXFORM LPC_INV_IA/Z11.2 X11 X8 LPC_INV_ND/Z11.2
+    dinv_date=line[71:76]
+    dstate=line[133:135]
 
+    if BDT_BALDTL_tbl['DINVDATECC']==dinv_date and  BDT_BALDTL_tbl['DSTATE']==dstate:
+        BDT_BALDTL_tbl['LPC_INV_IR']=line[135:146]
+        BDT_BALDTL_tbl['LPC_INV_IA']=line[146:157]
+        BDT_BALDTL_tbl['LPC_INV_ND']=line[176:187]
+        BDT_BALDTL_tbl['INPUT_RECORDS']+="*"+str(record_id);
+        process_update_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,output_log) 
+    else:
+        writelog("WARNING: The BALDTL record "+str(record_id)+" has no associated BALDUE record. INSERTING ANYWAY.",output_log)
+    
 
-     
+    
 def initialize_BDT_ADJMTDTL_tbl():            
-    debug("****** procedure==>  "+whereami()+" ******")
+    #debug("****** procedure==>  "+whereami()+" ******")
 #    global BDT_ADJMTDTL_tbl
     global current_abbd_rec_key 
     
@@ -902,7 +1066,7 @@ def initialize_BDT_ADJMTDTL_tbl():
     
  
 def initialize_PMNTADJ_tbl():            
-    debug("****** procedure==>  "+whereami()+" ******")
+    #debug("****** procedure==>  "+whereami()+" ******")
 #    global BDT_PMNTADJ_tbl,
     global current_abbd_rec_key
    
@@ -922,7 +1086,7 @@ def initialize_PMNTADJ_tbl():
      
      
 def initialize_BALDTL_tbl():
-    debug("****** procedure==>  "+whereami()+" ******")
+    #debug("****** procedure==>  "+whereami()+" ******")
 #    global BDT_BALDTL_tbl,
     global current_abbd_rec_key
 
@@ -938,12 +1102,15 @@ def initialize_BALDTL_tbl():
     BDT_BALDTL_tbl['DADJT']=''
     BDT_BALDTL_tbl['DBAL']=''
     BDT_BALDTL_tbl['LPC_APPLIED']=''
+    BDT_BALDTL_tbl['LPC_INV_IR']=''   
+    BDT_BALDTL_tbl['LPC_INV_IA']=''
+    BDT_BALDTL_tbl['LPC_INV_ND']=''      
     BDT_BALDTL_tbl['INPUT_RECORDS']=''
+ 
 
-
-
+ 
 def  initialize_BCCBBIL_tbl():
-    debug("****** procedure==>  "+whereami()+" ******")
+    #debug("****** procedure==>  "+whereami()+" ******")
 #    global BDT_BCCBBIL_tbl,
     global current_abbd_rec_key 
     
@@ -984,7 +1151,7 @@ def  initialize_BCCBBIL_tbl():
  
     
 def  initialize_CRNT1_tbl():
-    debug("****** procedure==>  "+whereami()+" ******")
+    #debug("****** procedure==>  "+whereami()+" ******")
 #    global BDT_CRNT1_tbl
     global current_abbd_rec_key 
     
@@ -1007,7 +1174,7 @@ def  initialize_CRNT1_tbl():
     BDT_CRNT1_tbl['INPUT_RECORDS']=''
     
 def  initialize_CRNT2_tbl():
-    debug("****** procedure==>  "+whereami()+" ******")
+    #debug("****** procedure==>  "+whereami()+" ******")
 #    global BDT_CRNT2_tbl, 
     global current_abbd_rec_key 
     
@@ -1036,7 +1203,7 @@ def  initialize_CRNT2_tbl():
 
 
 def  initialize_SWSPLCHG_tbl():
-    debug("****** procedure==>  "+whereami()+" ******")
+    #debug("****** procedure==>  "+whereami()+" ******")
 #    global BDT_SWSPLCHG_tbl,
     global current_abbd_rec_key 
     
@@ -1060,7 +1227,7 @@ def  initialize_SWSPLCHG_tbl():
     BDT_SWSPLCHG_tbl['INPUT_RECORDS']=''
  
 def count_record(currec,unknownRec):
-    debug("****** procedure==>  "+whereami()+" ******")  
+    #debug("****** procedure==>  "+whereami()+" ******")  
     global record_counts
     global unknown_record_counts
 
@@ -1077,7 +1244,7 @@ def count_record(currec,unknownRec):
 
    
 def process_write_program_stats():
-    debug("****** procedure==>  "+whereami()+" ******")
+    #debug("****** procedure==>  "+whereami()+" ******")
     global record_counts, unknown_record_counts, BDT_KEY_cnt
     global output_log
     writelog("\n",output_log)
@@ -1121,22 +1288,22 @@ def process_write_program_stats():
  
     
 def process_ERROR_END(msg):
-    debug("****** procedure==>  "+whereami()+" ******")
-    writelog("ERROR:"+msg)
-    debug("ERROR:"+msg)
+    #debug("****** procedure==>  "+whereami()+" ******")
+    writelog("ERROR:"+msg,output_log)
+    #debug("ERROR:"+msg)
     con.commit()
     con.close()
     process_close_files()
-    raise "ERROR:"+msg
-    
+    raise Exception("ERROR:"+msg)
+
     
 def process_close_files():
-    debug("****** procedure==>  "+whereami()+" ******")
+    #debug("****** procedure==>  "+whereami()+" ******")
     global bdt_input
     global output_log
     
-    if DEBUGISON:
-        DEBUG_LOG.close()
+#    if DEBUGISON:
+#        DEBUG_LOG.close()
         
     bdt_input.close();
     output_log.close()
@@ -1144,7 +1311,7 @@ def process_close_files():
     
     
 def endProg(msg):
-    debug("****** procedure==>  "+whereami()+" ******")
+    #debug("****** procedure==>  "+whereami()+" ******")
     global output_log
  
     con.commit()
@@ -1170,9 +1337,10 @@ def endProg(msg):
 
 print "Starting Program"
 init()
-try:
-    main()
-except Exception as e:
-    process_ERROR_END(e.message)
-else:
-    endProg("-END OF PROGRAM-")
+main()
+#try:
+    
+#except Exception as e:
+#    process_ERROR_END(e.message)
+#else:
+endProg("-END OF PROGRAM-")
