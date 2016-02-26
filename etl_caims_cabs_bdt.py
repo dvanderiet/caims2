@@ -44,7 +44,7 @@ import platform
 import os
 
 ###IMPORT COMMON/SHARED UTILITIES
-from etl_caims_cabs_utility import  process_insert_table, process_update_table, writelog, \
+from etl_caims_cabs_utility import  process_insert_table, process_update_table, writelog, convertnumber, \
                                    createTableTypeDict,translate_TACCNT_FGRP ,process_check_exists  
 
 settings = ConfigParser.ConfigParser();
@@ -509,14 +509,14 @@ def process_TYP0510_BALDUE():
         BDT_BCCBBIL_tbl['ASTATE']=line[37:39] 
     
     BDT_BCCBBIL_tbl['INVDATECC']=line[89:94]    
-    BDT_BCCBBIL_tbl['PREVBAL']=line[97:108]
-    BDT_BCCBBIL_tbl['PAYMNT']=line[108:119]
-    BDT_BCCBBIL_tbl['ADJT']=line[119:130]
-    BDT_BCCBBIL_tbl['ADJIR']=line[130:141]
-    BDT_BCCBBIL_tbl['ADJIA']=line[141:152]
-    BDT_BCCBBIL_tbl['ADJUS']=line[152:163]
-    BDT_BCCBBIL_tbl['BAL']=line[163:174]
-    BDT_BCCBBIL_tbl['ADLOC']=line[178:185]  
+    BDT_BCCBBIL_tbl['PREVBAL']=convertnumber(line[97:108],2)
+    BDT_BCCBBIL_tbl['PAYMNT']=convertnumber(line[108:119],2)
+    BDT_BCCBBIL_tbl['ADJT']=convertnumber(line[119:130],2)
+    BDT_BCCBBIL_tbl['ADJIR']=convertnumber(line[130:141],2)
+    BDT_BCCBBIL_tbl['ADJIA']=convertnumber(line[141:152],2)
+    BDT_BCCBBIL_tbl['ADJUS']=convertnumber(line[152:163],2)
+    BDT_BCCBBIL_tbl['BAL']=convertnumber(line[163:174],2)
+    BDT_BCCBBIL_tbl['ADLOC']=convertnumber(line[178:185],2) 
     BDT_BCCBBIL_tbl['INPUT_RECORDS']=str(record_id)
    
 #    process_update_bccbbil() 
@@ -556,18 +556,17 @@ def process_TYP0512_CRNT1():
         BDT_CRNT1_tbl['MONCHGFROMCC']=line[79:87] 
         BDT_CRNT1_tbl['MONCHGTHRUCC']=line[87:95]  
         BDT_CRNT1_tbl['DTINVDUECC']=line[95:103] 
-        BDT_CRNT1_tbl['LPC']=line[103:114] 
-        BDT_CRNT1_tbl['TOT_MRC']=line[136:147] 
-        BDT_CRNT1_tbl['MRCIR']=line[147:158]
-        BDT_CRNT1_tbl['MRCIA']=line[158:169]
-        
+        BDT_CRNT1_tbl['LPC']=convertnumber(line[103:114],2)
+        BDT_CRNT1_tbl['TOT_MRC']=convertnumber(line[136:147],2) 
+        BDT_CRNT1_tbl['MRCIR']=convertnumber(line[147:158],2)
+        BDT_CRNT1_tbl['MRCIA']=convertnumber(line[158:169],2)        
         if record_id == '051200':
-            BDT_CRNT1_tbl['MRCLO']=line[180:191]
-            BDT_CRNT1_tbl['STLVCC']=line[222:226] 
+            BDT_CRNT1_tbl['MRCLO']=convertnumber(line[180:191],2)
+            BDT_CRNT1_tbl['STLVCC']=convertnumber(line[221:225],2) 
             crnt1_051200_rec+=1
         elif record_id == '055000':
-            BDT_CRNT1_tbl['MRCLO']=line[169:180]
-            BDT_CRNT1_tbl['STLVCC']=line[217:221 ]         
+            BDT_CRNT1_tbl['MRCLO']=convertnumber(line[169:180],2)
+            BDT_CRNT1_tbl['STLVCC']=convertnumber(line[217:221],2)         
             crnt1_055000_rec+=1
         else:
             process_ERROR_END("ERROR: Expected record_id 051200 or 055000 but recieved a record_id of "+str(record_id))
@@ -631,26 +630,26 @@ def process_TYP0513_CRNT2():
     BDT_CRNT2_tbl['REF_NUM']=line[61:71]
     BDT_CRNT2_tbl['INVDT2CC']=line[71:76]
     BDT_CRNT2_tbl['SUBSTATE2']=line[77:79]
-    BDT_CRNT2_tbl['TOT_OCC']=line[79:90]
-    BDT_CRNT2_tbl['OCCIR']=line[90:101]
-    BDT_CRNT2_tbl['OCCIA']=line[101:112]
-    BDT_CRNT2_tbl['OCCUS']=line[112:123]
-    BDT_CRNT2_tbl['TOT_USG']=line[123:134]
-    BDT_CRNT2_tbl['USGIR']=line[134:145]
-    BDT_CRNT2_tbl['USGIA']=line[145:156]
-    BDT_CRNT2_tbl['TOT_TAX']=line[156:167]
-    BDT_CRNT2_tbl['CRNTCHG']=line[167:178]
+    BDT_CRNT2_tbl['TOT_OCC']=convertnumber(line[79:90],2)
+    BDT_CRNT2_tbl['OCCIR']=convertnumber(line[90:101],2)
+    BDT_CRNT2_tbl['OCCIA']=convertnumber(line[101:112],2)
+    BDT_CRNT2_tbl['OCCUS']=convertnumber(line[112:123],2)
+    BDT_CRNT2_tbl['TOT_USG']=convertnumber(line[123:134],2)
+    BDT_CRNT2_tbl['USGIR']=convertnumber(line[134:145],2)
+    BDT_CRNT2_tbl['USGIA']=convertnumber(line[145:156],2)
+    BDT_CRNT2_tbl['TOT_TAX']=convertnumber(line[156:167],2)
+    BDT_CRNT2_tbl['CRNTCHG']=convertnumber(line[167:178],2)
     BDT_CRNT2_tbl['INPUT_RECORDS']=str(record_id)
     if record_id == '051300':
-        BDT_CRNT2_tbl['TOT_SURCHG']=line[190:201]
-        BDT_CRNT2_tbl['STLVCC2']=line[206:210]
+        BDT_CRNT2_tbl['TOT_SURCHG']=convertnumber(line[190:201],2)
+        BDT_CRNT2_tbl['STLVCC2']=convertnumber(line[206:210],2)
         "DONT UPDATE OR INSERT A RECORD, the 051300 should always be followed by a 051301 record"
         " to populate OCCLO and USGLO records, so return will go back to read another record"
         " and OCCLO and USGLO will be populated by the TYP05131 module"
     if record_id == '055100':
-        BDT_CRNT2_tbl['OCCLO']=line[178:189]
-        BDT_CRNT2_tbl['STLVCC2']=line[205:209]
-        BDT_CRNT2_tbl['USGLO']=line[209:220]
+        BDT_CRNT2_tbl['OCCLO']=convertnumber(line[178:189],2)
+        BDT_CRNT2_tbl['STLVCC2']=convertnumber(line[205:209],2)
+        BDT_CRNT2_tbl['USGLO']=convertnumber(line[209:220],2)
         process_insert_table("CAIMS_BDT_CRNT2", BDT_CRNT2_tbl, BDT_CRNT2_DEFN_DICT,con,output_log)
 
 
@@ -738,29 +737,29 @@ def process_TYP0514_SWSPLCHG():
         if record_id in ('052500','055800','052300','052300','055600','052400','055700'):
             BDT_SWSPLCHG_tbl['MAC_ACCTYP']='0'
             BDT_SWSPLCHG_tbl['MAC_FACTYP']='0'
-            BDT_SWSPLCHG_tbl['MACIR']=line[102:113]
-            BDT_SWSPLCHG_tbl['MACIA']=line[113:124]
-            BDT_SWSPLCHG_tbl['MACIRIA']=line[124:135]
-            BDT_SWSPLCHG_tbl['MACIAIA']=line[135:146]
-            BDT_SWSPLCHG_tbl['MACLOC']=line[146:157]
+            BDT_SWSPLCHG_tbl['MACIR']=convertnumber(line[102:113],2)
+            BDT_SWSPLCHG_tbl['MACIA']=convertnumber(line[113:124],2)
+            BDT_SWSPLCHG_tbl['MACIRIA']=convertnumber(line[124:135],2)
+            BDT_SWSPLCHG_tbl['MACIAIA']=convertnumber(line[135:146],2)
+            BDT_SWSPLCHG_tbl['MACLOC']=convertnumber(line[146:157],2)
 
         else:        
             BDT_SWSPLCHG_tbl['MAC_ACCTYP']=line[102:103]
             BDT_SWSPLCHG_tbl['MAC_FACTYP']=line[103:104]
-            BDT_SWSPLCHG_tbl['MACIR']=line[104:115]
-            BDT_SWSPLCHG_tbl['MACIA']=line[115:126]
+            BDT_SWSPLCHG_tbl['MACIR']=convertnumber(line[104:115],2)
+            BDT_SWSPLCHG_tbl['MACIA']=convertnumber(line[115:126],2)
          
         if record_id in ('051400','051600','055200'):
             BDT_SWSPLCHG_tbl['MACND']=0
-            BDT_SWSPLCHG_tbl['MACIRIA']=line[126:137]
-            BDT_SWSPLCHG_tbl['MACIAIA']=line[137:148]
-            BDT_SWSPLCHG_tbl['MACLOC']=line[148:159]
+            BDT_SWSPLCHG_tbl['MACIRIA']=convertnumber(line[126:137],2)
+            BDT_SWSPLCHG_tbl['MACIAIA']=convertnumber(line[137:148],2)
+            BDT_SWSPLCHG_tbl['MACLOC']=convertnumber(line[148:159],2)
             
         if record_id in ('051500','055300'):
             BDT_SWSPLCHG_tbl['MACND']=line[126:137]
-            BDT_SWSPLCHG_tbl['MACIRIA']=line[137:148]
-            BDT_SWSPLCHG_tbl['MACIAIA']=line[148:159]
-            BDT_SWSPLCHG_tbl['MACLOC']=line[159:170]
+            BDT_SWSPLCHG_tbl['MACIRIA']=convertnumber(line[137:148],2)
+            BDT_SWSPLCHG_tbl['MACIAIA']=convertnumber(line[148:159],2)
+            BDT_SWSPLCHG_tbl['MACLOC']=convertnumber(line[159:170],2)
         
         if record_id in ('051400','055200'):
             BDT_SWSPLCHG_tbl['MAC_RECTYP']=14
@@ -805,7 +804,7 @@ def process_TYP1505_PMNTADJ():
     BDT_PMNTADJ_tbl['AINV_DATE']=line[71:76]
     BDT_PMNTADJ_tbl['DATERCVCC']=line[76:84]
     BDT_PMNTADJ_tbl['APSTATE']=line[132:133]
-    BDT_PMNTADJ_tbl['AMOUNT']=line[149:160]
+    BDT_PMNTADJ_tbl['AMOUNT']=convertnumber(line[149:160],2)
     BDT_PMNTADJ_tbl['INPUT_RECORDS']=str(record_id)
     
     #NEW CODE TO FIX BALDTL
@@ -968,11 +967,11 @@ def process_TYP2505_BALDTL():
     else:
         BDT_BALDTL_tbl['DSTATE']=line[76:78]
         
-    BDT_BALDTL_tbl['DPREVBAL']=line[116:127]
-    BDT_BALDTL_tbl['DPAYMNT']=line[127:138]
-    BDT_BALDTL_tbl['DADJT']=line[138:149]
-    BDT_BALDTL_tbl['DBAL']=line[149:160]
-    BDT_BALDTL_tbl['LPC_APPLIED']=line[164:175]
+    BDT_BALDTL_tbl['DPREVBAL']=convertnumber(line[116:127],2)
+    BDT_BALDTL_tbl['DPAYMNT']=convertnumber(line[127:138],2)
+    BDT_BALDTL_tbl['DADJT']=convertnumber(line[138:149],2)
+    BDT_BALDTL_tbl['DBAL']=convertnumber(line[149:160],2)
+    BDT_BALDTL_tbl['LPC_APPLIED']=convertnumber(line[164:175],2)
     #default the LPC fields to 0.   
     BDT_BALDTL_tbl['LPC_INV_IR']=0
     BDT_BALDTL_tbl['LPC_INV_IA']=0
@@ -1016,9 +1015,9 @@ def process_TYP2715_BALDTL():
     dstate=line[133:135]
 
     if BDT_BALDTL_tbl['DINVDATECC']==dinv_date and  BDT_BALDTL_tbl['DSTATE']==dstate:
-        BDT_BALDTL_tbl['LPC_INV_IR']=line[135:146]
-        BDT_BALDTL_tbl['LPC_INV_IA']=line[146:157]
-        BDT_BALDTL_tbl['LPC_INV_ND']=line[176:187]
+        BDT_BALDTL_tbl['LPC_INV_IR']=convertnumber(line[135:146],2)
+        BDT_BALDTL_tbl['LPC_INV_IA']=convertnumber(line[146:157],2)
+        BDT_BALDTL_tbl['LPC_INV_ND']=convertnumber(line[176:187],2)
         BDT_BALDTL_tbl['INPUT_RECORDS']+="*"+str(record_id);
         process_update_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,output_log) 
     else:
@@ -1074,14 +1073,13 @@ def initialize_PMNTADJ_tbl():
     BDT_PMNTADJ_tbl['EOB_DATE']=current_abbd_rec_key['EOB_DATE']
     BDT_PMNTADJ_tbl['BAN']=current_abbd_rec_key['BAN']
 
-    if record_id == '150500':
-        BDT_PMNTADJ_tbl['PORA']='P'        
-    BDT_PMNTADJ_tbl['AINV_REF']=line[61:71]
-    BDT_PMNTADJ_tbl['AINV_DATE']=line[71:76]
-    BDT_PMNTADJ_tbl['DATERCVCC']=line[76:84]
-    BDT_PMNTADJ_tbl['APSTATE']=line[132:133]
-    BDT_PMNTADJ_tbl['AMOUNT']=line[149:160]
-    BDT_PMNTADJ_tbl['INPUT_RECORDS']=str(record_id)
+    BDT_PMNTADJ_tbl['PORA']='P'        
+    BDT_PMNTADJ_tbl['AINV_REF']=''
+    BDT_PMNTADJ_tbl['AINV_DATE']=''
+    BDT_PMNTADJ_tbl['DATERCVCC']=''
+    BDT_PMNTADJ_tbl['APSTATE']=''
+    BDT_PMNTADJ_tbl['AMOUNT']=''
+    BDT_PMNTADJ_tbl['INPUT_RECORDS']=''
      
      
      
@@ -1159,18 +1157,18 @@ def  initialize_CRNT1_tbl():
     BDT_CRNT1_tbl['EOB_DATE']=current_abbd_rec_key['EOB_DATE']
     BDT_CRNT1_tbl['BAN']=current_abbd_rec_key['BAN']
 
-    BDT_CRNT1_tbl['REF_NUM']=line[61:71]
-    BDT_CRNT1_tbl['INVDT1CC']=line[71:76]
-    BDT_CRNT1_tbl['SUBSTATE']=line[78:77]
-    BDT_CRNT1_tbl['MONCHGFROMCC']=line[79:87] 
-    BDT_CRNT1_tbl['MONCHGTHRUCC']=line[87:95]  
-    BDT_CRNT1_tbl['DTINVDUECC']=line[95:103] 
-    BDT_CRNT1_tbl['LPC']=line[103:114] 
-    BDT_CRNT1_tbl['TOT_MRC']=line[136:147] 
-    BDT_CRNT1_tbl['MRCIR']=line[147:158]
-    BDT_CRNT1_tbl['MRCIA']=line[158:169]
-    BDT_CRNT1_tbl['MRCLO']=line[180:191]
-    BDT_CRNT1_tbl['STLVCC']=line[222:226] 
+    BDT_CRNT1_tbl['REF_NUM']=''
+    BDT_CRNT1_tbl['INVDT1CC']=''
+    BDT_CRNT1_tbl['SUBSTATE']=''
+    BDT_CRNT1_tbl['MONCHGFROMCC']=''
+    BDT_CRNT1_tbl['MONCHGTHRUCC']='' 
+    BDT_CRNT1_tbl['DTINVDUECC']='' 
+    BDT_CRNT1_tbl['LPC']=''
+    BDT_CRNT1_tbl['TOT_MRC']=''
+    BDT_CRNT1_tbl['MRCIR']=''
+    BDT_CRNT1_tbl['MRCIA']=''
+    BDT_CRNT1_tbl['MRCLO']=''
+    BDT_CRNT1_tbl['STLVCC']=''
     BDT_CRNT1_tbl['INPUT_RECORDS']=''
     
 def  initialize_CRNT2_tbl():

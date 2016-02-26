@@ -23,8 +23,10 @@ global record_counts,unknown_record_counts
 #unknown_record_counts={} 
  
 MONTH_DICT={'01':'JAN','02':'FEB','03':'MAR','04':'APR','05':'MAY','06':'JUN','07':'JUL','08':'AUG','09':'SEP','10':'OCT','11':'NOV','12':'DEC',} 
-DIGIT_DICT={'{':'0','A':'1','B':'2','C':'3','D':'4','E':'5','F':'6','G':'7','H':'8','I':'9',\
-            '}':'0','J':'1','K':'2','L':'3','M':'4','N':'5','O':'6','P':'7','Q':'8','R':'9'} 
+DIGIT_DICT={'0':'0','1':'1','2':'2','3':'3','4':'4','5':'5','6':'6','7':'7','8':'8','9':'9',\
+            '{':'0','A':'1','B':'2','C':'3','D':'4','E':'5','F':'6','G':'7','H':'8','I':'9',\
+            '}':'0','J':'1','K':'2','L':'3','M':'4','N':'5','O':'6','P':'7','Q':'8','R':'9'}
+
 NEGATIVE_NUMS=['}','J','K','L','M','N','O','P','Q','R']
  
     
@@ -79,7 +81,7 @@ def process_check_exists(tbl_name, tbl_rec,tbl_dic,con,output_log):
             #####NUMBERS#############               
             elif tbl_dic[key] == ('c|NUMBER','x|NUMBER'):
                 if not nulVal:                   
-                    sqlQuery+=str(key)+"="+str(convertnumber(value))+"' AND "       
+                    sqlQuery+=str(key)+"="+str(value)+"' AND "       
             else:
 #                process_ERROR_END("ERROR: process_update_table could not determine data type for " +tbl_dic[key] + " in the "+tbl_name+" table.")  
                 raise Exception("ERROR: process_check_exists could not determine data type for " +tbl_dic[key] + " in the "+tbl_name+" table.") 
@@ -144,7 +146,7 @@ def process_insert_table(tbl_name, tbl_rec,tbl_dic,con,output_log):
                 if nulVal:
                     secondPart+="0,"
                 else:                    
-                    secondPart+=str(convertnumber(value))+","                    
+                    secondPart+=str(value)+","                    
             else:
 #                process_ERROR_END("ERROR: "+whereami()+"procedure could not determine data type for " +tbl_dic[key] + " in the "+tbl_name+" table.") 
                 raise Exception("ERROR: "+whereami()+"procedure could not determine data type for " +tbl_dic[key] + " in the "+tbl_name+" table.")
@@ -224,14 +226,14 @@ def process_update_table(tbl_name, tbl_rec,tbl_dic,con,output_log):
             #####NUMBERS#############               
             elif tbl_dic[key] =='c|NUMBER':
                 if not nulVal:  
-                    updateSQL+=str(key)+"="+str(convertnumber(value))+","        
+                    updateSQL+=str(key)+"="+str(value)+","        
             elif tbl_dic[key] =='x|NUMBER':        
                 if nulVal:
                     #problem ix value should not be null
 #                    process_ERROR_END("ERROR: "+key+" is a unique index NUMBER value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
                      raise Exception("ERROR: "+key+" is a unique index NUMBER value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
                 else:
-                   whereClause+=str(key)+"='"+str(convertnumber(value))+"' AND "  
+                   whereClause+=str(key)+"='"+str(value)+"' AND "  
                     
             else:
 #                process_ERROR_END("ERROR: process_update_table could not determine data type for " +tbl_dic[key] + " in the "+tbl_name+" table.")  
@@ -262,46 +264,48 @@ def process_update_table(tbl_name, tbl_rec,tbl_dic,con,output_log):
                  
 
 
-def convertnumber(num) :
-
-    "this procedure assumes 2 decimal places"
+def convertnumber(number, decimalPlaces) :
+    global record_id    
 #   0000022194F
 #   0000000000{
 #   00000000000
 #    writelog("number in :"+str(num))
-    newNum= str(num).lstrip('0')
-    
-    if newNum == '{' or newNum == '' or newNum.rstrip(' ') == '':
-        return "0"
-    elif newNum.isdigit():
-#        writelog("number out: "+newNum[:len(str(newNum))-2]+"."+newNum[len(str(newNum))-2:len(str(newNum))])
-        return newNum[:len(str(newNum))-2]+"."+newNum[len(str(newNum))-2:len(str(newNum))]
-#        eg 98765
-#        return 987.65
-    elif len(str(newNum)) == 1:
-        hundredthsPlaceSymbol=DIGIT_DICT[str(newNum)]
-        if newNum in NEGATIVE_NUMS:
-            return "-0.0"+hundredthsPlaceSymbol
-        else:
-            return "0.0"+hundredthsPlaceSymbol
-        
-    elif str(newNum[:len(newNum)-1]).isdigit():
-        leftPart=str(newNum)[:len(str(newNum))-2]+"."
-        right2=newNum[len(str(newNum))-2:len(str(newNum))]
-
-        tensPlace=right2[:1]
-        hundredthsPlaceSymbol=right2[1:2] 
-        #convert last place non numeric digit to a number
-        hundredthsPlace= DIGIT_DICT[hundredthsPlaceSymbol]
-#        writelog("number out: "+leftPart+tensPlace+hundredthsPlace)
-        if hundredthsPlaceSymbol in NEGATIVE_NUMS:
-            return "-"+leftPart+tensPlace+hundredthsPlace
-        else:
-            return leftPart+tensPlace+hundredthsPlace
-        #everything numeric except last digit
+    num=number.rstrip(' ').lstrip(' ')
+    if num == '':
+        return 0
+    isNegative=False
+    lastdigit="0"
+    lastStr=num[-1:]
+    if lastStr in NEGATIVE_NUMS:
+        isNegative=True
+        lastdigit=DIGIT_DICT[str(lastStr)]
     else:
-#        process_ERROR_END("ERROR: Cant Convert Number: "+str(num) +"   from line:"+str(line))
+        isNegative=False
+        lastdigit=DIGIT_DICT[str(lastStr)]
+        
+    newNum=num[:len(str(num))-1]+lastdigit
+    
+    if newNum.isdigit() and decimalPlaces==0:
+        if str(newNum).lstrip('0')=='':
+            return "0"
+        else:
+            return str(newNum).lstrip('0')
+    
+    if newNum.isdigit():        
+        rightPart=str(newNum)[-decimalPlaces:]
+        leftPart=str(newNum)[:len(str(newNum))-decimalPlaces]    
+        if str(leftPart).lstrip('0')=='':
+            leftPart="0."
+        else:
+            leftPart=str(leftPart).lstrip('0')+"."
+            
+        if isNegative==True:
+            leftPart="-"+leftPart
+        
+        return leftPart+rightPart
+    else:
         raise Exception("ERROR: Cant Convert Number: "+str(num))
+
 
 
 
