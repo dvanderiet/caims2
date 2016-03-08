@@ -29,11 +29,11 @@ DIGIT_DICT={'0':'0','1':'1','2':'2','3':'3','4':'4','5':'5','6':'6','7':'7','8':
 
 NEGATIVE_NUMS=['}','J','K','L','M','N','O','P','Q','R']
  
-    
-def whereami():
-    # returns the name of the current executing procedure, etc...
-   #e.g. procedure==>  format_date
-    return inspect.stack()[1][3]         
+#    
+#def whereami():
+#    # returns the name of the current executing procedure, etc...
+#   #e.g. procedure==>  format_date
+#    return inspect.stack()[1][3]         
     
 
 def format_date(datestring):
@@ -149,7 +149,7 @@ def process_insert_table(tbl_name, tbl_rec,tbl_dic,con,output_log):
                     secondPart+=str(value)+","                    
             else:
 #                process_ERROR_END("ERROR: "+whereami()+"procedure could not determine data type for " +tbl_dic[key] + " in the "+tbl_name+" table.") 
-                raise Exception("ERROR: "+whereami()+"procedure could not determine data type for " +tbl_dic[key] + " in the "+tbl_name+" table.")
+                raise Exception("ERROR: Could not determine data type for " +tbl_dic[key] + " in the "+tbl_name+" table.")
         except KeyError as e:
             writelog("WARNING: Column "+key+" not found in the "+tbl_name+" table.  Skipping.",output_log)
             writelog("KeyError:"+e.message,output_log)
@@ -169,7 +169,7 @@ def process_insert_table(tbl_name, tbl_rec,tbl_dic,con,output_log):
             writelog("****** DUPLICATE INSERT INTO "+str(tbl_name)+"*****************",output_log)
             writelog("Insert SQL: "+str(insSQL),output_log)
         else:
-            writelog("ERROR:"+whereami()+":" +str(e.message),output_log)
+            writelog("ERROR:"+str(e.message),output_log)
             writelog("SQL causing problem:"+insSQL,output_log)
     finally:
         insCurs.close()
@@ -206,7 +206,7 @@ def process_update_table(tbl_name, tbl_rec,tbl_dic,con,output_log):
                 if nulVal:
                     #problem ix value should not be null
 #                    process_ERROR_END("ERROR: "+key+" is a unique index STRING/VARCHAR value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
-                    raise Exception("ERROR: "+key+" is a unique index STRING/VARCHAR value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
+                    raise Exception("ERROR: "+key+" is a unique index STRING/VARCHAR value but was passed as null when updating "+tbl_name)
                 else:
                    whereClause+=str(key)+"='"+str(value).rstrip(' ')+"' AND "  
                    
@@ -219,7 +219,7 @@ def process_update_table(tbl_name, tbl_rec,tbl_dic,con,output_log):
                 if nulVal:
                     #problem ix value should not be null
 #                    process_ERROR_END("ERROR: "+key+" is a unique index DATETIME value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
-                    raise Exception("ERROR: "+key+" is a unique index DATETIME value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name) 
+                    raise Exception("ERROR: "+key+" is a unique index DATETIME value but was passed as null when updating "+tbl_name) 
                 else:
                     whereClause+=str(key)+"="+format_date(value)+" AND "  
                    
@@ -231,9 +231,9 @@ def process_update_table(tbl_name, tbl_rec,tbl_dic,con,output_log):
                 if nulVal:
                     #problem ix value should not be null
 #                    process_ERROR_END("ERROR: "+key+" is a unique index NUMBER value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
-                     raise Exception("ERROR: "+key+" is a unique index NUMBER value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
+                     raise Exception("ERROR: "+key+" is a unique index NUMBER value but was passed as null when updating "+tbl_name)
                 else:
-                   whereClause+=str(key)+"='"+str(value)+"' AND "  
+                   whereClause+=str(key)+"="+str(value)+" AND "  
                     
             else:
 #                process_ERROR_END("ERROR: process_update_table could not determine data type for " +tbl_dic[key] + " in the "+tbl_name+" table.")  
@@ -350,7 +350,21 @@ def getUniqueKeyColumns(tablenm,con,output_log):
         keyCurs.close()
         
     return colArray  
- 
+    
+def setDictFields (tablenm, defn_dict):
+   #This Procedure sets the field names in the table dictionaries 
+    #used for updating and inserting into oracle tables./
+           
+#    colTypDict=collections.OrderedDict()
+    colDict=dict()
+        
+     
+    for key,value in defn_dict.items() :
+        colDict[key]=''
+    
+    return colDict 
+
+    
 def createTableTypeDict(tablenm, con,output_log):
     #This Procedure retrieves table columsn and unique key columns
     #-It iterates through and marks the column as either and x (index)

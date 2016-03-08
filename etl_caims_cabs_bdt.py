@@ -562,11 +562,11 @@ def process_TYP0512_CRNT1():
         BDT_CRNT1_tbl['MRCIA']=convertnumber(line[158:169],2)        
         if record_id == '051200':
             BDT_CRNT1_tbl['MRCLO']=convertnumber(line[180:191],2)
-            BDT_CRNT1_tbl['STLVCC']=convertnumber(line[221:225],2) 
+            BDT_CRNT1_tbl['STLVCC']=line[221:225] 
             crnt1_051200_rec+=1
         elif record_id == '055000':
             BDT_CRNT1_tbl['MRCLO']=convertnumber(line[169:180],2)
-            BDT_CRNT1_tbl['STLVCC']=convertnumber(line[217:221],2)         
+            BDT_CRNT1_tbl['STLVCC']=line[217:221]         
             crnt1_055000_rec+=1
         else:
             process_ERROR_END("ERROR: Expected record_id 051200 or 055000 but recieved a record_id of "+str(record_id))
@@ -642,13 +642,13 @@ def process_TYP0513_CRNT2():
     BDT_CRNT2_tbl['INPUT_RECORDS']=str(record_id)
     if record_id == '051300':
         BDT_CRNT2_tbl['TOT_SURCHG']=convertnumber(line[190:201],2)
-        BDT_CRNT2_tbl['STLVCC2']=convertnumber(line[206:210],2)
+        BDT_CRNT2_tbl['STLVCC2']=line[206:210]
         "DONT UPDATE OR INSERT A RECORD, the 051300 should always be followed by a 051301 record"
         " to populate OCCLO and USGLO records, so return will go back to read another record"
         " and OCCLO and USGLO will be populated by the TYP05131 module"
     if record_id == '055100':
         BDT_CRNT2_tbl['OCCLO']=convertnumber(line[178:189],2)
-        BDT_CRNT2_tbl['STLVCC2']=convertnumber(line[205:209],2)
+        BDT_CRNT2_tbl['STLVCC2']=line[205:209]
         BDT_CRNT2_tbl['USGLO']=convertnumber(line[209:220],2)
         process_insert_table("CAIMS_BDT_CRNT2", BDT_CRNT2_tbl, BDT_CRNT2_DEFN_DICT,con,output_log)
 
@@ -860,7 +860,7 @@ def process_TYP2005_ADJMTDTL():
     BDT_ADJMTDTL_tbl['PHRASE_CD']=line[84:87]
     BDT_ADJMTDTL_tbl['AUDITNUM']=line[134:150]
     BDT_ADJMTDTL_tbl['INTER_INTRA']=line[150:151]
-    BDT_ADJMTDTL_tbl['AMOUNT']=line[151:162]
+    BDT_ADJMTDTL_tbl['AMOUNT']=convertnumber(line[151:162],2)
     BDT_ADJMTDTL_tbl['APSTATE']=line[218:220]
     BDT_ADJMTDTL_tbl['APSTLVCC']=line[221:225]
     
