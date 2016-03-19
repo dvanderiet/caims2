@@ -6,7 +6,7 @@
 """
 
 import datetime
-import inspect
+#import inspect
 #import collections
 startTM=datetime.datetime.now();
 import cx_Oracle
@@ -37,24 +37,24 @@ NEGATIVE_NUMS=['}','J','K','L','M','N','O','P','Q','R']
     
 
 def format_date(datestring):
-    
+#    return 19000101 for null /zero values
     dtSize=len(datestring)
     
-    if dtSize ==5:
+    if datestring.strip('0').strip(' ') == '' :
+        return "TO_DATE('1900-01-01','YYYY-MM-DD')"  
+    elif dtSize ==5:
         #jdate conversion
         return "TO_DATE('"+datestring+"','YY-DDD')"
     elif dtSize==6:
         return "TO_DATE('"+datestring[4:6]+"-"+MONTH_DICT[datestring[2:4]]+"-"+"20"+datestring[:2]+"','DD-MON-YY')"  
     elif dtSize==8:
-        return "TO_DATE('"+datestring[:4]+"-"+datestring[4:6]+"-"+"20"+datestring[6:2]+"','YYYY-MM-DD')"     
+        return "TO_DATE('"+datestring[:4]+"-"+datestring[4:6]+"-"+datestring[6:8]+"','YYYY-MM-DD')"     
 
 
 def process_check_exists(tbl_name, tbl_rec,tbl_dic,con,output_log):
 #(process_check_exists("CAIMS_BDT_BALDTL", tmpTblRec, BDT_BALDTL_DEFN_DICT,con,output_log)):
 #return true or false
-    sqlQuery="SELECT ACNA FROM "+tbl_name+" WHERE "
-    
-    
+    sqlQuery="SELECT ID FROM "+tbl_name+" WHERE "
     
     for key, value in tbl_rec.items() :
       
@@ -79,7 +79,7 @@ def process_check_exists(tbl_name, tbl_rec,tbl_dic,con,output_log):
                 if not nulVal:
                     sqlQuery+=str(key)+"="+format_date(value)+" AND "    
             #####NUMBERS#############               
-            elif tbl_dic[key] == ('c|NUMBER','x|NUMBER'):
+            elif tbl_dic[key] in ('c|NUMBER','x|NUMBER','c|INTEGER','x|INTEGER'):
                 if not nulVal:                   
                     sqlQuery+=str(key)+"="+str(value)+"' AND "       
             else:
@@ -94,14 +94,15 @@ def process_check_exists(tbl_name, tbl_rec,tbl_dic,con,output_log):
         
     chkCurs=con.cursor()
  
-    result=''
+    result=-1
     try:
         chkCurs.execute(sqlQuery)
-        for x in chkCurs:
-            result=x
+        for id in chkCurs:
+            result=id
         con.commit()
 #        print "Number of rows updated: " + updCurs.count??????
         con.commit()
+        writelog("SQL:"+sqlQuery,output_log)
         writelog("SUCCESSFUL RECORD CHECK TO  "+tbl_name+".",output_log)
         
     except cx_Oracle.DatabaseError, exc:
@@ -111,15 +112,17 @@ def process_check_exists(tbl_name, tbl_rec,tbl_dic,con,output_log):
     finally:
         chkCurs.close()
 
-    if len(result) > 0:
-        return True
-
+    if int(result) >0:
+        return int(result)
+    else:
+        return 0
+        
 
     
-def process_insert_table(tbl_name, tbl_rec,tbl_dic,con,output_log):
+def process_insert_table(tbl_name, tbl_rec,tbl_dic,con,seq_name,output_log):
     
-    firstPart="INSERT INTO "+tbl_name+" (" #add columns
-    secondPart=" VALUES ("  #add values
+    firstPart="INSERT INTO "+tbl_name+" (ID," #add columns
+    secondPart=" VALUES ("+str(seq_name)+".nextVal,"  #add values
    
     for key, value in tbl_rec.items() :
         nulVal=False
@@ -128,19 +131,27 @@ def process_insert_table(tbl_name, tbl_rec,tbl_dic,con,output_log):
 #             "EMPTY VALUE"
     
         try:
-            if tbl_dic[key] in ('c|STRING', 'x|STRING'):
+            if key =='ID':
+                pass
+            elif tbl_dic[key] in ('c|STRING', 'x|STRING'):
                 firstPart+=key+","
                 if nulVal:
-                    secondPart+="NULL,"
+                    if tbl_dic[key] == 'x|STRING':
+                        secondPart+="'nl',"
+                    else:
+                        secondPart+="NULL,"
                 else:
                     secondPart+="'"+str(value).rstrip(' ')+"',"
             elif tbl_dic[key] in ('c|DATETIME', 'x|DATETIME'):
                 firstPart+=key+","
                 if nulVal:
-                    secondPart+="NULL,"
+                    if tbl_dic[key] == 'x|DATETIME':  #use 19000101 as null value if index key
+                        secondPart+=format_date('19000101')+","
+                    else:
+                        secondPart+="NULL,"
                 else:                    
                     secondPart+=format_date(value)+","
-            elif tbl_dic[key] in ('c|NUMBER','x|NUMBER'):
+            elif tbl_dic[key] in ('c|NUMBER','x|NUMBER','c|INTEGER','x|INTEGER'):
                 firstPart+=key+","
                 "RULE: if null/blank number, then populate with 0."
                 if nulVal:
@@ -158,21 +169,29 @@ def process_insert_table(tbl_name, tbl_rec,tbl_dic,con,output_log):
     secondPart=secondPart.rstrip(',') +")"      
      
     insCurs=con.cursor()
-    insSQL=firstPart+secondPart
-
+    insSQL=firstPart+secondPart  + " returning ID into :id "
+    
+#    returning Id
+#>               into :id"
+    idVal=insCurs.var(cx_Oracle.NUMBER)
+        
     try:
-        insCurs.execute(insSQL) 
+        insCurs.execute(insSQL,id=idVal) 
         con.commit()
         writelog("SUCCESSFUL INSERT INTO "+tbl_name+".",output_log)
+#        return idVal.getvalue()
     except cx_Oracle.DatabaseError , e:
         if ("%s" % e.message).startswith('ORA-00001:'):
             writelog("****** DUPLICATE INSERT INTO "+str(tbl_name)+"*****************",output_log)
             writelog("Insert SQL: "+str(insSQL),output_log)
+            writelog("***************************************************************",output_log)
         else:
             writelog("ERROR:"+str(e.message),output_log)
             writelog("SQL causing problem:"+insSQL,output_log)
     finally:
+        return idVal.getvalue()
         insCurs.close()
+        
    
 def process_update_table(tbl_name, tbl_rec,tbl_dic,con,output_log):
     
@@ -199,7 +218,7 @@ def process_update_table(tbl_name, tbl_rec,tbl_dic,con,output_log):
             #####STRINGS##############
             elif tbl_dic[key] == 'c|STRING':
                 if str(key) == 'INPUT_RECORDS':
-                    updateSQL+="INPUT_RECORDS = INPUT_RECORDS||'*"+str(value).rstrip(' ')+"',"
+                    updateSQL+="INPUT_RECORDS = INPUT_RECORDS||',"+str(value).rstrip(' ')+"',"
                 elif not nulVal:
                     updateSQL+=str(key)+"='"+str(value).rstrip(' ')+"',"
             elif tbl_dic[key] == 'x|STRING':
@@ -224,10 +243,10 @@ def process_update_table(tbl_name, tbl_rec,tbl_dic,con,output_log):
                     whereClause+=str(key)+"="+format_date(value)+" AND "  
                    
             #####NUMBERS#############               
-            elif tbl_dic[key] =='c|NUMBER':
+            elif tbl_dic[key] in ('c|NUMBER','c|INTEGER'):
                 if not nulVal:  
                     updateSQL+=str(key)+"="+str(value)+","        
-            elif tbl_dic[key] =='x|NUMBER':        
+            elif tbl_dic[key] in ('x|NUMBER','x|INTEGER'):        
                 if nulVal:
                     #problem ix value should not be null
 #                    process_ERROR_END("ERROR: "+key+" is a unique index NUMBER value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
@@ -257,8 +276,10 @@ def process_update_table(tbl_name, tbl_rec,tbl_dic,con,output_log):
         
     except cx_Oracle.DatabaseError, exc:
         if ("%s" % exc.message).startswith('ORA-:'):
+            writelog("****** ORACLE ERROR "+str(tbl_name)+"**************************",output_log)
             writelog("ERROR:"+str(exc.message),output_log)
-            writelog("UPDATE SQL Causing problem:"+updateSQL,output_log)
+            writelog("Problem SQL:"+updateSQL,output_log)
+            writelog("***************************************************************",output_log)
     finally:
         updCurs.close()
                  
@@ -266,10 +287,7 @@ def process_update_table(tbl_name, tbl_rec,tbl_dic,con,output_log):
 
 def convertnumber(number, decimalPlaces) :
     global record_id    
-#   0000022194F
-#   0000000000{
-#   00000000000
-#    writelog("number in :"+str(num))
+ 
     num=number.rstrip(' ').lstrip(' ')
     if num == '':
         return 0
@@ -324,7 +342,7 @@ def getTableColumns(tablenm,con,output_log):
     except cx_Oracle.DatabaseError, exc:
         if ("%s" % exc.message).startswith('ORA-:'):
             writelog("ERROR:"+str(exc.message),output_log)
-            writelog("SQL causing problem:"+mySQL,output_log)
+            writelog("Problem SQL:"+mySQL,output_log)
     finally:
         myCurs.close()
         
@@ -427,9 +445,9 @@ def translate_TACCNT_FGRP(taccnt,tfgrp):
         elif tfgrp.rstrip(' ') == 'V':
             return 'Y'            
         else:
-            return taccnt.rstrip(' ')
+            return '$'
     else:
-        return tfgrp.rstrip(' ')
+        return taccnt.rstrip(' ')
  
     
 
