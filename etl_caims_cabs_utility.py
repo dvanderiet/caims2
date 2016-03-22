@@ -51,10 +51,10 @@ def format_date(datestring):
         return "TO_DATE('"+datestring[:4]+"-"+datestring[4:6]+"-"+datestring[6:8]+"','YYYY-MM-DD')"     
 
 
-def process_check_exists(tbl_name, tbl_rec,tbl_dic,con,output_log):
+def process_check_exists(tbl_name, tbl_rec,tbl_dic,con,schema,output_log):
 #(process_check_exists("CAIMS_BDT_BALDTL", tmpTblRec, BDT_BALDTL_DEFN_DICT,con,output_log)):
 #return true or false
-    sqlQuery="SELECT ID FROM "+tbl_name+" WHERE "
+    sqlQuery="SELECT ID FROM "+schema+"."+tbl_name+" WHERE "
     
     for key, value in tbl_rec.items() :
       
@@ -119,9 +119,9 @@ def process_check_exists(tbl_name, tbl_rec,tbl_dic,con,output_log):
         
 
     
-def process_insert_table(tbl_name, tbl_rec,tbl_dic,con,seq_name,output_log):
+def process_insert_table(tbl_name, tbl_rec,tbl_dic,con,schema,seq_name,output_log):
     
-    firstPart="INSERT INTO "+tbl_name+" (ID," #add columns
+    firstPart="INSERT INTO "+schema+"."+tbl_name+" (ID," #add columns
     secondPart=" VALUES ("+str(seq_name)+".nextVal,"  #add values
    
     for key, value in tbl_rec.items() :
@@ -193,13 +193,13 @@ def process_insert_table(tbl_name, tbl_rec,tbl_dic,con,seq_name,output_log):
         insCurs.close()
         
    
-def process_update_table(tbl_name, tbl_rec,tbl_dic,con,output_log):
+def process_update_table(tbl_name, tbl_rec,tbl_dic,con,schema,output_log):
     
     "ASSUMPTIONS!!!"
     "THis code assumes that if a value is null that it does not update the ORacle table."
     "Need to make a code change if that rule is not true"
     
-    updateSQL="UPDATE "+tbl_name+" SET " #add columns
+    updateSQL="UPDATE "+schema+"."+tbl_name+" SET " #add columns
     whereClause="WHERE "
 
     for key, value in tbl_rec.items() :
@@ -327,12 +327,12 @@ def convertnumber(number, decimalPlaces) :
 
 
 
-def getTableColumns(tablenm,con,output_log):
+def getTableColumns(tablenm,con,schema,output_log):
       
          
     myCurs=con.cursor()
     myTbl=tablenm
-    mySQL="select * FROM %s WHERE ROWNUM=1" % (myTbl)
+    mySQL="select * FROM "+schema+".%s WHERE ROWNUM=1" % (myTbl)
     tmpArray=[]
     try:    
         myCurs.execute(mySQL)  
@@ -361,7 +361,9 @@ def getUniqueKeyColumns(tablenm,con,output_log):
             colArray.append(x)
         con.commit()
     except cx_Oracle.DatabaseError, exc:
-        if ("%s" % exc.message).startswith('ORA-:'):
+        if ("%s" % exc.message).rstrip(' ')== 'ORA-00942':
+            raise Exception("ERROR:Table does not exist: " +tbl_dic[key] + " in the "+tbl_name+" table.") 
+        elif ("%s" % exc.message).startswith('ORA-:'):
             writelog("ERROR:"+str(exc.message),output_log)
             writelog("SQL causing problem:"+mySQL,output_log)
     finally:
@@ -383,7 +385,7 @@ def setDictFields (tablenm, defn_dict):
     return colDict 
 
     
-def createTableTypeDict(tablenm, con,output_log):
+def createTableTypeDict(tablenm, con,schema,output_log):
     #This Procedure retrieves table columsn and unique key columns
     #-It iterates through and marks the column as either and x (index)
     #-or a c (column).  This is then used in the update routine.  The
@@ -394,7 +396,7 @@ def createTableTypeDict(tablenm, con,output_log):
     colTypDict=dict()
         
     colArray=[]
-    colArray=getTableColumns(tablenm,con,output_log)
+    colArray=getTableColumns(tablenm,con,schema,output_log)
     indexArray=[]
     indexArray=getUniqueKeyColumns(tablenm,con,output_log)
      

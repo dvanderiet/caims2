@@ -355,14 +355,6 @@ def log_footer_rec_info():
 
 
 
-def process_csr_records():
-#    debug("****** procedure==>  "+whereami()+" ******")
-    global record_id
-    global Level
-    global tstx
-    global verno
-    global tsty
-    global uact
           
 # 01      S3
 #**************            VERIFIED
@@ -479,6 +471,14 @@ def process_csr_records():
 #:............:    ***************
 # JOINED  BCTFCACG  **************
 
+def process_csr_records():
+#    debug("****** procedure==>  "+whereami()+" ******")
+    global record_id
+    global Level
+    global tstx
+    global verno
+    global tsty
+    global uact
 
  
      

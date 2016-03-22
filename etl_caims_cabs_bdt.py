@@ -53,7 +53,7 @@ settings.sections()
 
 "SET ORACLE CONNECTION"
 con=cx_Oracle.connect(settings.get('OracleSettings','OraCAIMSUser'),settings.get('OracleSettings','OraCAIMSPw'),settings.get('OracleSettings','OraCAIMSSvc'))
- 
+schema=settings.get('OracleSettings','OraInsertSchema')
     
 "CONSTANTS"
 #Set Debug Trace Below - Set to trun to turn on
@@ -204,32 +204,32 @@ def main():
     bccbbil_id=0   
     baldue_id=0
     BDT_BCCBBIL_tbl=dict() 
-    BDT_BCCBBIL_DEFN_DICT=createTableTypeDict('CAIMS_BDT_BCCBBIL',con,output_log)
+    BDT_BCCBBIL_DEFN_DICT=createTableTypeDict('CAIMS_BDT_BCCBBIL',con,schema,output_log)
     
     baldtl_id=0
     baldtl_prevKey=''
     BDT_BALDTL_tbl=dict()
-    BDT_BALDTL_DEFN_DICT=createTableTypeDict('CAIMS_BDT_BALDTL',con,output_log)
+    BDT_BALDTL_DEFN_DICT=createTableTypeDict('CAIMS_BDT_BALDTL',con,schema,output_log)
     
     crnt1_id=0    
     BDT_CRNT1_tbl=dict()
-    BDT_CRNT1_DEFN_DICT=createTableTypeDict('CAIMS_BDT_CRNT1',con,output_log)  
+    BDT_CRNT1_DEFN_DICT=createTableTypeDict('CAIMS_BDT_CRNT1',con,schema,output_log)  
 
     crnt2_id=0
     BDT_CRNT2_tbl=dict()
-    BDT_CRNT2_DEFN_DICT=createTableTypeDict('CAIMS_BDT_CRNT2',con,output_log)
+    BDT_CRNT2_DEFN_DICT=createTableTypeDict('CAIMS_BDT_CRNT2',con,schema,output_log)
     
     swsplchg_id=0 
     BDT_SWSPLCHG_tbl=dict()
-    BDT_SWSPLCHG_DEFN_DICT=createTableTypeDict('CAIMS_BDT_SWSPLCHG',con,output_log)       
+    BDT_SWSPLCHG_DEFN_DICT=createTableTypeDict('CAIMS_BDT_SWSPLCHG',con,schema,output_log)       
 
     pmntadj_id=0
     BDT_PMNTADJ_tbl=dict()
-    BDT_PMNTADJ_DEFN_DICT=createTableTypeDict('CAIMS_BDT_PMNTADJ',con,output_log)        
+    BDT_PMNTADJ_DEFN_DICT=createTableTypeDict('CAIMS_BDT_PMNTADJ',con,schema,output_log)        
 
     adjmtdtl_id=0
     BDT_ADJMTDTL_tbl=dict()
-    BDT_ADJMTDTL_DEFN_DICT=createTableTypeDict('CAIMS_BDT_ADJMTDTL',con,output_log)         
+    BDT_ADJMTDTL_DEFN_DICT=createTableTypeDict('CAIMS_BDT_ADJMTDTL',con,schema,output_log)         
          
 
     "COUNTERS"
@@ -573,7 +573,7 @@ def process_TYP0510_BALDUE():
     BDT_BCCBBIL_tbl['INPUT_RECORDS']=str(record_id)
    
 #    process_update_bccbbil() 
-    bccbbil_id=process_insert_table("CAIMS_BDT_BCCBBIL", BDT_BCCBBIL_tbl,BDT_BCCBBIL_DEFN_DICT,con,"SQ_BDT_BCCBBIL",output_log)
+    bccbbil_id=process_insert_table("CAIMS_BDT_BCCBBIL", BDT_BCCBBIL_tbl,BDT_BCCBBIL_DEFN_DICT,con,schema,"SQ_BDT_BCCBBIL",output_log)
     writelog(str(record_id)+"BCCBBIL",output_log)
  
  
@@ -631,14 +631,14 @@ def process_TYP0512_CRNT1():
                     tmpTblRec['BCCBBIL_ID']=BDT_BALDTL_tbl['BCCBBIL_ID']
                     tmpTblRec['DINVDATECC']=BDT_BALDTL_tbl['DINVDATECC']
                     tmpTblRec['DSTATE']=BDT_BALDTL_tbl['DSTATE']
-                    if process_check_exists("CAIMS_BDT_BALDTL", tmpTblRec, BDT_BALDTL_DEFN_DICT,con,output_log)>0:
-                        process_update_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,output_log)
+                    if process_check_exists("CAIMS_BDT_BALDTL", tmpTblRec, BDT_BALDTL_DEFN_DICT,con,schema,output_log)>0:
+                        process_update_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,schema,output_log)
                     else:
-                        baldtl_id=process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,"SQ_BDT_BALDTL",output_log)
+                        baldtl_id=process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,schema,"SQ_BDT_BALDTL",output_log)
                         baldtl_prevKey=str(BDT_BALDTL_tbl['BCCBBIL_ID'])+str(BDT_BALDTL_tbl['DINVDATECC'])+str(BDT_BALDTL_tbl['DSTATE']).rstrip(' ')
                         writelog(str(record_id)+"     BALDTL",output_log)
                 else:
-                    baldtl_id=process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,"SQ_BDT_BALDTL",output_log)
+                    baldtl_id=process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,schema,"SQ_BDT_BALDTL",output_log)
                     baldtl_prevKey=str(BDT_BALDTL_tbl['BCCBBIL_ID'])+str(BDT_BALDTL_tbl['DINVDATECC'])+str(BDT_BALDTL_tbl['DSTATE']).rstrip(' ')
                     writelog(str(record_id)+"     BALDTL",output_log)
             except KeyError:
@@ -677,7 +677,7 @@ def process_TYP0512_CRNT1():
 
         if baldtl_id ==0:
             writelog("THIS IS WHERE WE INSERT CRNT1 with a 0 baldtl_id. record_id:" +record_id, output_log)
-        crnt1_id=process_insert_table("CAIMS_BDT_CRNT1", BDT_CRNT1_tbl, BDT_CRNT1_DEFN_DICT,con,"SQ_BDT_CRNT1",output_log)
+        crnt1_id=process_insert_table("CAIMS_BDT_CRNT1", BDT_CRNT1_tbl, BDT_CRNT1_DEFN_DICT,con,schema,"SQ_BDT_CRNT1",output_log)
         writelog(str(record_id)+"               CRNT1",output_log)
    
     
@@ -751,7 +751,7 @@ def process_TYP0513_CRNT2():
         BDT_CRNT2_tbl['OCCLO']=convertnumber(line[178:189],2)
         BDT_CRNT2_tbl['STLVCC2']=line[205:209]
         BDT_CRNT2_tbl['USGLO']=convertnumber(line[209:220],2)
-        crnt2_id=process_insert_table("CAIMS_BDT_CRNT2", BDT_CRNT2_tbl, BDT_CRNT2_DEFN_DICT,con,"SQ_BDT_CRNT2",output_log)
+        crnt2_id=process_insert_table("CAIMS_BDT_CRNT2", BDT_CRNT2_tbl, BDT_CRNT2_DEFN_DICT,con,schema,"SQ_BDT_CRNT2",output_log)
         writelog(str(record_id)+"                    CRNT2",output_log)
 
         initialize_tbl('BDT_BALDTL_tbl')
@@ -786,10 +786,10 @@ def process_TYP0513_CRNT2():
                     tmpTblRec['BCCBBIL_ID']=bccbbil_id
                     tmpTblRec['DINVDATECC']=BDT_BALDTL_tbl['DINVDATECC']
                     tmpTblRec['DSTATE']=BDT_BALDTL_tbl['DSTATE']
-                    if process_check_exists("CAIMS_BDT_BALDTL", tmpTblRec, BDT_BALDTL_DEFN_DICT,con,output_log)>0:
-                        process_update_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,output_log)
+                    if process_check_exists("CAIMS_BDT_BALDTL", tmpTblRec, BDT_BALDTL_DEFN_DICT,con,schema,output_log)>0:
+                        process_update_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,schema,output_log)
                 else:
-                    baldtl_id=process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,"SQ_BDT_BALDTL",output_log)
+                    baldtl_id=process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,schema,"SQ_BDT_BALDTL",output_log)
                     baldtl_prevKey=str(BDT_BALDTL_tbl['BCCBBIL_ID'])+str(BDT_BALDTL_tbl['DINVDATECC'])+str(BDT_BALDTL_tbl['DSTATE']).rstrip(' ')
                     writelog(str(record_id)+"     BALDTL",output_log)
             except KeyError:
@@ -813,7 +813,7 @@ def process_TYP05131_CRNT2():
     if prev_record_id == '051300':
 #        if crnt2_id>0:
 #            writelog("ERROR: CRNT2 is "+str(crnt2_id)+", we shouldnt be writing another record",output_log)
-        crnt2_id=process_insert_table("CAIMS_BDT_CRNT2", BDT_CRNT2_tbl, BDT_CRNT2_DEFN_DICT,con,"SQ_BDT_CRNT2",output_log)
+        crnt2_id=process_insert_table("CAIMS_BDT_CRNT2", BDT_CRNT2_tbl, BDT_CRNT2_DEFN_DICT,con,schema,"SQ_BDT_CRNT2",output_log)
         writelog(str(record_id)+"                    CRNT2",output_log)
     else:
         process_ERROR_END("ERROR: Previous record should have been a 051300.")
@@ -895,7 +895,7 @@ def process_TYP0514_SWSPLCHG():
             BDT_SWSPLCHG_tbl['MAC_RECTYP']=24
     
         BDT_SWSPLCHG_tbl['INPUT_RECORDS']=str(record_id)
-        swsplchg_id=process_insert_table("CAIMS_BDT_SWSPLCHG", BDT_SWSPLCHG_tbl, BDT_SWSPLCHG_DEFN_DICT,con,"SQ_BDT_SWSPLCHG",output_log)
+        swsplchg_id=process_insert_table("CAIMS_BDT_SWSPLCHG", BDT_SWSPLCHG_tbl, BDT_SWSPLCHG_DEFN_DICT,con,schema,"SQ_BDT_SWSPLCHG",output_log)
         writelog(str(record_id)+"     SWSPLCHG",output_log)
         
         
@@ -965,10 +965,10 @@ def process_TYP1505_PMNTADJ():
                 tmpTblRec['BCCBBIL_ID']=bccbbil_id
                 tmpTblRec['DINVDATECC']=BDT_BALDTL_tbl['DINVDATECC']
                 tmpTblRec['DSTATE']=BDT_BALDTL_tbl['DSTATE']
-                if process_check_exists("CAIMS_BDT_BALDTL", tmpTblRec, BDT_BALDTL_DEFN_DICT,con,output_log)>0:
-                    process_update_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,output_log)
+                if process_check_exists("CAIMS_BDT_BALDTL", tmpTblRec, BDT_BALDTL_DEFN_DICT,con,schema,output_log)>0:
+                    process_update_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,schema,output_log)
              else:
-                baldtl_id=process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,"SQ_BDT_BALDTL",output_log)
+                baldtl_id=process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,schema,"SQ_BDT_BALDTL",output_log)
                 baldtl_prevKey=str(BDT_BALDTL_tbl['BCCBBIL_ID'])+str(BDT_BALDTL_tbl['DINVDATECC'])+str(BDT_BALDTL_tbl['DSTATE']).rstrip(' ')
                 writelog(str(record_id)+"     BALDTL",output_log)
         except KeyError:
@@ -976,7 +976,7 @@ def process_TYP1505_PMNTADJ():
             
             
     BDT_PMNTADJ_tbl['BALDTL_ID']=baldtl_id
-    pmntadj_id=process_insert_table("CAIMS_BDT_PMNTADJ", BDT_PMNTADJ_tbl, BDT_PMNTADJ_DEFN_DICT,con,"SQ_BDT_PMNTADJ",output_log) 
+    pmntadj_id=process_insert_table("CAIMS_BDT_PMNTADJ", BDT_PMNTADJ_tbl, BDT_PMNTADJ_DEFN_DICT,con,schema,"SQ_BDT_PMNTADJ",output_log) 
     writelog(str(record_id)+"          PMNTADJ",output_log)
 
 def process_TYP2005_PMNTADJ():                    
@@ -1042,10 +1042,10 @@ def process_TYP2005_PMNTADJ():
                 tmpTblRec['BCCBBIL_ID']=bccbbil_id
                 tmpTblRec['DINVDATECC']=BDT_BALDTL_tbl['DINVDATECC']
                 tmpTblRec['DSTATE']=BDT_BALDTL_tbl['DSTATE']
-                if process_check_exists("CAIMS_BDT_BALDTL", tmpTblRec, BDT_BALDTL_DEFN_DICT,con,output_log)>0:
-                    process_update_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,output_log)
+                if process_check_exists("CAIMS_BDT_BALDTL", tmpTblRec, BDT_BALDTL_DEFN_DICT,con,schema,output_log)>0:
+                    process_update_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,schema,output_log)
             else:
-                baldtl_id=process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,"SQ_BDT_BALDTL",output_log)
+                baldtl_id=process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,schema,"SQ_BDT_BALDTL",output_log)
                 baldtl_prevKey=str(BDT_BALDTL_tbl['BCCBBIL_ID'])+str(BDT_BALDTL_tbl['DINVDATECC'])+str(BDT_BALDTL_tbl['DSTATE']).rstrip(' ')
                 writelog(str(record_id)+"     BALDTL",output_log)
         except KeyError:
@@ -1153,17 +1153,17 @@ def process_TYP20051_ADJMTDTL():
     if baldtl_prevKey == str(BDT_BALDTL_tbl['BCCBBIL_ID'])+str(BDT_BALDTL_tbl['DINVDATECC'])+str(BDT_BALDTL_tbl['DSTATE'].rstrip(' ')):
         writelog("BALDTL keys are equal...avoiding a duplicate",output_log)
     else:
-        baldtl_id=process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,"SQ_BDT_BALDTL",output_log)
+        baldtl_id=process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,schema,"SQ_BDT_BALDTL",output_log)
         baldtl_prevKey=str(BDT_BALDTL_tbl['BCCBBIL_ID'])+str(BDT_BALDTL_tbl['DINVDATECC'])+str(BDT_BALDTL_tbl['DSTATE']).rstrip(' ')
         writelog(str(record_id)+"     BALDTL",output_log)
     
     
     BDT_PMNTADJ_tbl['BALDTL_ID']=baldtl_id
-    pmntadj_id=process_insert_table("CAIMS_BDT_PMNTADJ", BDT_PMNTADJ_tbl, BDT_PMNTADJ_DEFN_DICT,con,"SQ_BDT_PMNTADJ",output_log) 
+    pmntadj_id=process_insert_table("CAIMS_BDT_PMNTADJ", BDT_PMNTADJ_tbl, BDT_PMNTADJ_DEFN_DICT,con,schema,"SQ_BDT_PMNTADJ",output_log) 
     writelog(str(record_id)+"          PMNTADJ",output_log) 
     
     BDT_ADJMTDTL_tbl['PMNTADJ_ID']=pmntadj_id
-    adjmtdtl_id=process_insert_table("CAIMS_BDT_ADJMTDTL", BDT_ADJMTDTL_tbl, BDT_ADJMTDTL_DEFN_DICT,con,"SQ_BDT_ADJMTDTL",output_log)
+    adjmtdtl_id=process_insert_table("CAIMS_BDT_ADJMTDTL", BDT_ADJMTDTL_tbl, BDT_ADJMTDTL_DEFN_DICT,con,schema,"SQ_BDT_ADJMTDTL",output_log)
     writelog(str(record_id)+"                    ADJMTDTL",output_log)
 
                
@@ -1219,9 +1219,9 @@ def process_TYP2505_BALDTL():
     
     if baldtl_prevKey == str(BDT_BALDTL_tbl['BCCBBIL_ID'])+str(BDT_BALDTL_tbl['DINVDATECC'])+str(BDT_BALDTL_tbl['DSTATE'].rstrip(' ')):
         writelog("BALDTL keys are equal...DOING AN UPDATE HERE!!!!!!!!!!!!!!!!!!!!!",output_log)
-        process_update_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,output_log)
+        process_update_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,schema,output_log)
     else:
-        baldtl_id=process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,"SQ_BDT_BALDTL",output_log)
+        baldtl_id=process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,schema,"SQ_BDT_BALDTL",output_log)
         baldtl_prevKey=str(BDT_BALDTL_tbl['BCCBBIL_ID'])+str(BDT_BALDTL_tbl['DINVDATECC'])+str(BDT_BALDTL_tbl['DSTATE']).rstrip(' ')
         writelog(str(record_id)+"     BALDTL",output_log)
        
@@ -1245,7 +1245,7 @@ def process_TYP2715_BALDTL():
         BDT_BALDTL_tbl['LPC_INV_IA']=convertnumber(line[146:157],2)
         BDT_BALDTL_tbl['LPC_INV_ND']=convertnumber(line[176:187],2)
         BDT_BALDTL_tbl['INPUT_RECORDS']=str(record_id)
-        process_update_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,output_log) 
+        process_update_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,schema,output_log) 
     else:
         writelog("WARNING: The BALDTL record "+str(record_id)+" has no associated BALDUE record. INSERTING ANYWAY.",output_log)
     
