@@ -572,10 +572,15 @@ def process_TYP0510_BALDUE():
     BDT_BCCBBIL_tbl['ADLOC']=convertnumber(line[178:189],2) 
     BDT_BCCBBIL_tbl['INPUT_RECORDS']=str(record_id)
    
-#    process_update_bccbbil() 
-    bccbbil_id=process_insert_table("CAIMS_BDT_BCCBBIL", BDT_BCCBBIL_tbl,BDT_BCCBBIL_DEFN_DICT,con,schema,"SQ_BDT_BCCBBIL",output_log)
-    writelog(str(record_id)+"BCCBBIL",output_log)
- 
+    #NEW CODE TO FIX DUPLICATE ERRORS
+    tmpTblRec={}
+    tmpTblRec=BDT_BCCBBIL_tbl
+    if process_check_exists("CAIMS_BDT_BCCBBIL", tmpTblRec, BDT_BCCBBIL_DEFN_DICT,con,schema,output_log)>0:
+        writelog("Root record already exists for "+BDT_BCCBBIL_tbl['ACNA']+",ban="+BDT_BCCBBIL_tbl['BAN']+", "+BDT_BCCBBIL_tbl['EOB_DATE'],output_log) 
+    else:        
+        bccbbil_id=process_insert_table("CAIMS_BDT_BCCBBIL", BDT_BCCBBIL_tbl,BDT_BCCBBIL_DEFN_DICT,con,schema,"SQ_BDT_BCCBBIL",output_log)
+        writelog(str(record_id)+"BCCBBIL",output_log)
+    #NEW CODE TO FIX DUPLICATE ERRORS
  
 def process_TYP0512_CRNT1():    
     global output_log
@@ -666,6 +671,16 @@ def process_TYP0512_CRNT1():
             BDT_CRNT1_tbl['MRCLO']=convertnumber(line[180:191],2)
             BDT_CRNT1_tbl['STLVCC']=line[221:225] 
         elif record_id == '055000':
+#                                            [30:61]
+#   FIXFORM X-225 ACNA/A5 EOB_DATE/6 BAN/A13 X5 X2 X6 X6 X12
+#           [61:71]     [71:76]   [76:77]   [77:79]
+#   FIXFORM REF_NUM/A10 INVDT1/A5 X1        SUBSTATE/A2
+#           [79:87]        [87:95]        [95:103]     [103:114]
+#   FIXFORM MONCHGFROMCC/8 MONCHGTHRUCC/8 DTINVDUECC/8 LPC/Z11.2
+#           [114:136] [136:147]
+#   FIXFORM X22       TOT_MRC/Z11.2
+#           [147:158]   [158: 169]  [169:180]   [180:217] [217:221]
+#   FIXFORM MRCIR/Z11.2 MRCIA/Z11.2 MRCLO/Z11.2 X33 X4    STLVCC/A4
             BDT_CRNT1_tbl['MRCLO']=convertnumber(line[169:180],2)
             BDT_CRNT1_tbl['STLVCC']=line[217:221]         
         else:

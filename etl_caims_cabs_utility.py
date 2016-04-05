@@ -10,6 +10,7 @@ import datetime
 #import collections
 startTM=datetime.datetime.now();
 import cx_Oracle
+import re
 #import sys
 #import ConfigParser
 #import platform
@@ -35,6 +36,10 @@ NEGATIVE_NUMS=['}','J','K','L','M','N','O','P','Q','R']
 #   #e.g. procedure==>  format_date
 #    return inspect.stack()[1][3]         
     
+#returns true if any characters in the acna string contain bad non-blank whitespace characters
+#or other bad character.
+def invalid_acna_chars(strg, search=re.compile(r'[^A-Z0-9 ]').search):
+    return bool(search(strg))
 
 def format_date(datestring):
 #    return 19000101 for null /zero values
@@ -81,7 +86,7 @@ def process_check_exists(tbl_name, tbl_rec,tbl_dic,con,schema,output_log):
             #####NUMBERS#############               
             elif tbl_dic[key] in ('c|NUMBER','x|NUMBER','c|INTEGER','x|INTEGER'):
                 if not nulVal:                   
-                    sqlQuery+=str(key)+"="+str(value)+"' AND "       
+                    sqlQuery+=str(key)+"="+str(value)+" AND "       
             else:
 #                process_ERROR_END("ERROR: process_update_table could not determine data type for " +tbl_dic[key] + " in the "+tbl_name+" table.")  
                 raise Exception("ERROR: process_check_exists could not determine data type for " +tbl_dic[key] + " in the "+tbl_name+" table.") 
@@ -102,8 +107,7 @@ def process_check_exists(tbl_name, tbl_rec,tbl_dic,con,schema,output_log):
         con.commit()
 #        print "Number of rows updated: " + updCurs.count??????
         con.commit()
-        writelog("SQL:"+sqlQuery,output_log)
-        writelog("SUCCESSFUL RECORD CHECK TO  "+tbl_name+".",output_log)
+        writelog("SUCCESSFUL RECORD CHECK TO  "+tbl_name+". result:"+str(result),output_log)
         
     except cx_Oracle.DatabaseError, exc:
         if ("%s" % exc.message).startswith('ORA-:'):
@@ -112,8 +116,8 @@ def process_check_exists(tbl_name, tbl_rec,tbl_dic,con,schema,output_log):
     finally:
         chkCurs.close()
 
-    if int(result) >0:
-        return int(result)
+    if result >0:
+        return result
     else:
         return 0
         
@@ -141,7 +145,9 @@ def process_insert_table(tbl_name, tbl_rec,tbl_dic,con,schema,seq_name,output_lo
                     else:
                         secondPart+="NULL,"
                 else:
-                    secondPart+="'"+str(value).rstrip(' ')+"',"
+#                    secondPart+="'"+str(value).rstrip(' ')+"',"
+#                    new code from Jason
+                     secondPart+="'"+str(value).rstrip(' ').replace("'","''")+"',"
             elif tbl_dic[key] in ('c|DATETIME', 'x|DATETIME'):
                 firstPart+=key+","
                 if nulVal:
@@ -362,7 +368,7 @@ def getUniqueKeyColumns(tablenm,con,output_log):
         con.commit()
     except cx_Oracle.DatabaseError, exc:
         if ("%s" % exc.message).rstrip(' ')== 'ORA-00942':
-            raise Exception("ERROR:Table does not exist: " +tbl_dic[key] + " in the "+tbl_name+" table.") 
+            raise Exception("ERROR:Table does not exist: "+tablenm+" table.") 
         elif ("%s" % exc.message).startswith('ORA-:'):
             writelog("ERROR:"+str(exc.message),output_log)
             writelog("SQL causing problem:"+mySQL,output_log)
