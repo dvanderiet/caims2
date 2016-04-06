@@ -174,6 +174,7 @@ def main():
     global adjmtdtl_id
     global pmntadj_id
     global swsplchg_id
+    global stlvcc
     "Counters"
     
     global inputLineCnt, BDT_KEY_cnt
@@ -470,6 +471,7 @@ def reset_record_flags():
     global pmntadj_id
     global swsplchg_id
     global baldtl_prevKey
+    global stlvcc
     
     bccbbil_id=0
     crnt1_id=0
@@ -479,6 +481,7 @@ def reset_record_flags():
     pmntadj_id=0
     swsplchg_id=0
     baldtl_prevKey=''
+    stlvcc=''
     
     
 def process_TYP0101_ROOT():
@@ -487,6 +490,11 @@ def process_TYP0101_ROOT():
     global bccbbil_id
 #    global BDT_BCCBBIL_tbl,  BDT_BCCBBIL_DEFN_DICT  
     global  record_id
+####COMPUTE####   
+#    global banlock      
+#    banlock = 'N';
+####COMPUTE####       
+    
     
     initialize_tbl('BDT_BCCBBIL_tbl')
  
@@ -518,7 +526,14 @@ def process_TYP0101_ROOT():
     BDT_BCCBBIL_tbl['INPUT_RECORDS']=str(record_id)
     #NOTE did a record count and BCCBBIL/BALDUE always have an 010100, 050500, and 05100 records
     #so not doing an insert here... defer the inser to the 3rd record(051000)
-    
+####COMPUTE####    
+#  taccnt_fgrp= BDT_BCCBBIL_tbl['TACCNT_FGRP']
+#  bill_date=[71:76] 
+#  eobdate=BDT_BCCBBIL_tbl['EOB_DATE'] 
+#  eobdatecc=eobdate
+#  bildatecc=bill_date
+#  CAIMS_REL='B';
+####COMPUTE####    
 def process_TYP0505_BO_CODE():
     global bccbbil_id
     "BO_CODE"
@@ -571,7 +586,14 @@ def process_TYP0510_BALDUE():
     BDT_BCCBBIL_tbl['LPC_TOT_ND']=0
     BDT_BCCBBIL_tbl['ADLOC']=convertnumber(line[178:189],2) 
     BDT_BCCBBIL_tbl['INPUT_RECORDS']=str(record_id)
-   
+####COMPUTE####
+#    curr_invoie = REF_NO|INV_DATE;
+#    astate = IF TASTATE EQ '  ' THEN 'XX' ELSE TASTATE;
+#    invdate0=EDIT(INV_DATE);
+#    invdatea=GREGDT (INVDATE0, 'I6');
+#    invdateb=INVDATEA;
+#    invdatecc=INVDATEB;
+####COMPUTE####        
     #NEW CODE TO FIX DUPLICATE ERRORS
     tmpTblRec={}
     tmpTblRec=BDT_BCCBBIL_tbl
@@ -588,7 +610,8 @@ def process_TYP0512_CRNT1():
     global baldtl_id
     global bccbbil_id
     global baldtl_prevKey
-     
+    global stlvcc    
+    
     if line[77:79] =='XX':
         pass
     else:
@@ -602,7 +625,18 @@ def process_TYP0512_CRNT1():
       #                                               [47:57]
 #FIXFORM X-225 ACNA/A5 EOB_DATE/6 BAN/A13 X9 X8 ADJMT_SER_NO/10
 #        [57:61] [61:71]      [71:76]  
-        
+####COMPUTE####
+#    COMPUTE
+#    INVDATECC=INVDATECC;      from root
+#    ASTATE=ASTATE;            from root
+#    DINVDATECC=DINVDATECC;    from baldtl
+#    DSTATE=DSTATE;            from baldtl
+#    DTL_INVOICE/A15=REF_NUM|INVDT1;
+#    INVDT10/I5=EDIT(INVDT1);
+#    INVDT1A/I6YMD=GREGDT (INVDT10, 'I6');
+#    INVDT1B/YMD=INVDT1A;
+#    INVDT1CC=INVDT1B;
+####COMPUTE####        
         initialize_tbl('BDT_BALDTL_tbl')
 #        baldtl_id=0
         BDT_BALDTL_tbl['BCCBBIL_ID']=bccbbil_id
@@ -626,29 +660,45 @@ def process_TYP0512_CRNT1():
         BDT_BALDTL_tbl['INPUT_RECORDS']=str(record_id)
         tmpTblRec={}
         
-        if baldtl_id > 0 and baldtl_prevKey == str(BDT_BALDTL_tbl['BCCBBIL_ID'])+str(BDT_BALDTL_tbl['DINVDATECC'])+str(BDT_BALDTL_tbl['DSTATE'].rstrip(' ')): 
-            writelog("BALDTL keys are equal...avoiding a duplicate",output_log)
+        
+###NEW        
+        tmpTblRec['BCCBBIL_ID']=BDT_BALDTL_tbl['BCCBBIL_ID']
+        tmpTblRec['DINVDATECC']=BDT_BALDTL_tbl['DINVDATECC']
+        tmpTblRec['DSTATE']=BDT_BALDTL_tbl['DSTATE']
+        if process_check_exists("CAIMS_BDT_BALDTL", tmpTblRec, BDT_BALDTL_DEFN_DICT,con,schema,output_log)>0:
+            pass #ON MATCH CONTINUE
         else:
-
-            try:
-                if BDT_BALDTL_tbl['BCCBBIL_ID'] > 0 and str(BDT_BALDTL_tbl['DINVDATECC']).rstrip(' ') <> '' \
-                and  str(BDT_BALDTL_tbl['DSTATE'].rstrip(' ') <> ''):
-                    tmpTblRec['BCCBBIL_ID']=BDT_BALDTL_tbl['BCCBBIL_ID']
-                    tmpTblRec['DINVDATECC']=BDT_BALDTL_tbl['DINVDATECC']
-                    tmpTblRec['DSTATE']=BDT_BALDTL_tbl['DSTATE']
-                    if process_check_exists("CAIMS_BDT_BALDTL", tmpTblRec, BDT_BALDTL_DEFN_DICT,con,schema,output_log)>0:
-                        process_update_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,schema,output_log)
-                    else:
-                        baldtl_id=process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,schema,"SQ_BDT_BALDTL",output_log)
-                        baldtl_prevKey=str(BDT_BALDTL_tbl['BCCBBIL_ID'])+str(BDT_BALDTL_tbl['DINVDATECC'])+str(BDT_BALDTL_tbl['DSTATE']).rstrip(' ')
-                        writelog(str(record_id)+"     BALDTL",output_log)
-                else:
-                    baldtl_id=process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,schema,"SQ_BDT_BALDTL",output_log)
-                    baldtl_prevKey=str(BDT_BALDTL_tbl['BCCBBIL_ID'])+str(BDT_BALDTL_tbl['DINVDATECC'])+str(BDT_BALDTL_tbl['DSTATE']).rstrip(' ')
-                    writelog(str(record_id)+"     BALDTL",output_log)
-            except KeyError:
-                writelog("ERROR: THIS SHOULD NEVER HAPPEN?", output_log)
-                
+            #ON MATCH INCLUDE
+            baldtl_id=process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,schema,"SQ_BDT_BALDTL",output_log)
+            writelog(str(record_id)+"     BALDTL",output_log)
+###NEW
+        
+        
+###OLD                
+        
+#        if baldtl_id > 0 and baldtl_prevKey == str(BDT_BALDTL_tbl['BCCBBIL_ID'])+str(BDT_BALDTL_tbl['DINVDATECC'])+str(BDT_BALDTL_tbl['DSTATE'].rstrip(' ')): 
+#            writelog("BALDTL keys are equal. ON MATCH CONTINUE",output_log)
+#        else:
+#
+#            try:
+#                if BDT_BALDTL_tbl['BCCBBIL_ID'] > 0 and str(BDT_BALDTL_tbl['DINVDATECC']).rstrip(' ') <> '' \
+#                and  str(BDT_BALDTL_tbl['DSTATE'].rstrip(' ') <> ''):
+#                    tmpTblRec['BCCBBIL_ID']=BDT_BALDTL_tbl['BCCBBIL_ID']
+#                    tmpTblRec['DINVDATECC']=BDT_BALDTL_tbl['DINVDATECC']
+#                    tmpTblRec['DSTATE']=BDT_BALDTL_tbl['DSTATE']
+#                    if process_check_exists("CAIMS_BDT_BALDTL", tmpTblRec, BDT_BALDTL_DEFN_DICT,con,schema,output_log)>0:
+#                        process_update_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,schema,output_log)
+#                    else:
+#                        baldtl_id=process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,schema,"SQ_BDT_BALDTL",output_log)
+#                        baldtl_prevKey=str(BDT_BALDTL_tbl['BCCBBIL_ID'])+str(BDT_BALDTL_tbl['DINVDATECC'])+str(BDT_BALDTL_tbl['DSTATE']).rstrip(' ')
+#                        writelog(str(record_id)+"     BALDTL",output_log)
+#                else:
+#                    baldtl_id=process_insert_table("CAIMS_BDT_BALDTL", BDT_BALDTL_tbl, BDT_BALDTL_DEFN_DICT,con,schema,"SQ_BDT_BALDTL",output_log)
+#                    baldtl_prevKey=str(BDT_BALDTL_tbl['BCCBBIL_ID'])+str(BDT_BALDTL_tbl['DINVDATECC'])+str(BDT_BALDTL_tbl['DSTATE']).rstrip(' ')
+#                    writelog(str(record_id)+"     BALDTL",output_log)
+#            except KeyError:
+#                writelog("ERROR: THIS SHOULD NEVER HAPPEN?", output_log)
+####OLD                
         #POPULATE CRNT1
 #   FIXFORM X-225 ACNA/A5 EOB_DATE/6 BAN/A13 X5 X2 X6 X6 X12
 #   FIXFORM REF_NUM/A10 INVDT1/A5 X1 SUBSTATE/A2
@@ -689,7 +739,9 @@ def process_TYP0512_CRNT1():
         if BDT_CRNT1_tbl['STLVCC'].rstrip(' ') == '':
             BDT_CRNT1_tbl['STLVCC']='nl'
         BDT_CRNT1_tbl['INPUT_RECORDS']=str(record_id)
-
+        
+        stlvcc=BDT_CRNT1_tbl['STLVCC'] 
+        
         if baldtl_id ==0:
             writelog("THIS IS WHERE WE INSERT CRNT1 with a 0 baldtl_id. record_id:" +record_id, output_log)
         crnt1_id=process_insert_table("CAIMS_BDT_CRNT1", BDT_CRNT1_tbl, BDT_CRNT1_DEFN_DICT,con,schema,"SQ_BDT_CRNT1",output_log)
@@ -722,7 +774,23 @@ def process_TYP0513_CRNT2():
 #           [167:178]      [172:184] [184:195]        [195:200] [200:204]     
 #   FIXFORM CURNTCHG/Z11.2 X12       TOT_SURCHG/Z11.2 X5        STLVCC2/A4
 #   FIXFORM ON BCTFBDTI X105 OCCLO/Z11.2 USGLO/Z11.2
+ 
 
+#######COMPUTE###############
+#COMPUTE
+# DTL_INVOICE/A15=REF_NUM|INVDT2;
+# INVDATECC=INVDATECC;
+# ASTATE=ASTATE;
+# DINVDATECC=DINVDATECC;
+# DSTATE=DSTATE;
+# SUBSTATE=SUBSTATE;
+# STLVCC=STLVCC;
+# INVDT1CC=INVDT1CC;
+# INVDT20/I5=EDIT(INVDT2);
+# INVDT2A/I6YMD=GREGDT (INVDT20, 'I6');
+# INVDT2B/YMD=INVDT2A;
+# INVDT2CC=INVDT2B;
+#######COMPUTE###############     
    
 #    BDT_CRNT2_tbl
 #    BUILD pieces here
@@ -857,7 +925,7 @@ def process_TYP0514_SWSPLCHG():
 #   FIXFORM MAC_ACCTYP/1 MAC_FACTYP/1 MACIR/Z11.2 MACIA/Z11.2
 #           [126:137]     [137:148]     [148:159]
 #   FIXFORM MACIRIA/Z11.2 MACIAIA/Z11.2 MACLOC/Z11.2
-   
+                
         BDT_SWSPLCHG_tbl['BCCBBIL_ID']=bccbbil_id
         BDT_SWSPLCHG_tbl['STATE_IND']=state_ind
         BDT_SWSPLCHG_tbl['ST_LVLCC']=line[78:82]
