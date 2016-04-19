@@ -38,7 +38,7 @@ NEGATIVE_NUMS=['}','J','K','L','M','N','O','P','Q','R']
     
 #returns true if any characters in the acna string contain bad non-blank whitespace characters
 #or other bad character.
-def invalid_acna_chars(strg, search=re.compile(r'[^A-Z0-9 ]').search):
+def invalid_acna_chars(strg, search=re.compile(r'[^A-Z0-9- ]').search):
     return bool(search(strg))
 
 def format_date(datestring):
@@ -99,15 +99,18 @@ def process_check_exists(tbl_name, tbl_rec,tbl_dic,con,schema,output_log):
         
     chkCurs=con.cursor()
  
+    val=-1
     result=-1
     try:
+        
         chkCurs.execute(sqlQuery)
         for id in chkCurs:
             result=id
         con.commit()
 #        print "Number of rows updated: " + updCurs.count??????
         con.commit()
-        writelog("SUCCESSFUL RECORD CHECK TO  "+tbl_name+". result:"+str(result),output_log)
+        
+        writelog("SUCCESSFUL RECORD CHECK TO  "+tbl_name+". result:"+str(val),output_log)
         
     except cx_Oracle.DatabaseError, exc:
         if ("%s" % exc.message).startswith('ORA-:'):
@@ -116,10 +119,12 @@ def process_check_exists(tbl_name, tbl_rec,tbl_dic,con,schema,output_log):
     finally:
         chkCurs.close()
 
-    if result >0:
-        return result
+    if result > 0:
+        val=int(result[0])
+        return val
     else:
         return 0
+   
         
 
     
@@ -186,17 +191,22 @@ def process_insert_table(tbl_name, tbl_rec,tbl_dic,con,schema,seq_name,output_lo
         con.commit()
         writelog("SUCCESSFUL INSERT INTO "+tbl_name+".",output_log)
 #        return idVal.getvalue()
+        insCurs.close()
+        return int(idVal.getvalue())
     except cx_Oracle.DatabaseError , e:
         if ("%s" % e.message).startswith('ORA-00001:'):
             writelog("****** DUPLICATE INSERT INTO "+str(tbl_name)+"*****************",output_log)
+#            writelog("ACNA:"+tbl_rec['ACNA']+" BAN:"+tbl_rec['BAN']+" EOB_DATE:"+tbl_rec['EOB_DATE'],output_log)
+            writelog(str(tbl_rec),output_log)
             writelog("Insert SQL: "+str(insSQL),output_log)
             writelog("***************************************************************",output_log)
         else:
             writelog("ERROR:"+str(e.message),output_log)
             writelog("SQL causing problem:"+insSQL,output_log)
-    finally:
-        return idVal.getvalue()
         insCurs.close()
+        return -1
+ 
+        
         
    
 def process_update_table(tbl_name, tbl_rec,tbl_dic,con,schema,output_log):
