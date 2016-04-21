@@ -9,7 +9,7 @@ DESCRIPTION:      CAIMS Extract/Transformation/Load program for Bill Data Tape
                   
 REPLACES:         Legacy CTL program BC100FT0 - LOAD BCCBBIL FOCUS DATABASE.
                                                                          
-LANGUAGE/VERSION: Python/2.7.10                                          
+LANGUAGE/VERSION: Python/2.7.10                                             
 INITIATION DATE:  x/x/2016                                                
 INPUT FILE(S):    PBCL.CY.XRU0102O.CABS.G0358V00.txt (build from GDG)
 LOCATION:         MARION MAINFRAME           

@@ -8,7 +8,7 @@
 import datetime
 #import inspect
 #import collections
-startTM=datetime.datetime.now();
+startTM=datetime.datetime.now();  
 import cx_Oracle
 import re
 #import sys

@@ -12,7 +12,7 @@ REPLACES:         Legacy CTL program BC100FT0 - LOAD BCCBBIL FOCUS DATABASE.
 LANGUAGE/VERSION: Python/2.7.10                                          
 INITIATION DATE:  x/x/2016                                                
 INPUT FILE(S):    PBCL.CY.XRU0102O.CABS.G0358V00.txt (build from GDG)
-LOCATION:         MARION MAINFRAME           
+LOCATION:         MARION MAINFRAME              
                                                                          
 OUTPUT:           ORACLE DWBS001P                                
                   Table names CAIMS_OCC_*
@@ -29,10 +29,10 @@ having a need to know.
 =========================================================================
                  R E V I S I O N      H I S T O R Y                      
 =========================================================================
-PROGRAMMER:                                   DATE:        
+PROGRAMMER:DAN VANDERIET                      DATE:04/20/2016
 VALIDATOR:                                    DATE:                      
-REASON:  
-
+REASON: INITIAL VERSION 
+=========================================================================
 """
 
 import datetime
@@ -749,6 +749,8 @@ def process_TYPE3010A():
         initialize_tbl('OCC_OCC_FID1_tbl') 
         OCC_OCC_FID1_tbl['OCC_HDR_ID']=occ_hdr_id                      
         OCC_OCC_FID1_tbl['CD_FID1']=cd_fid1
+        #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
+        #not part of the original FOCUS logic
         OCC_OCC_FID1_tbl['UNIQUE_CNTR']=0
         OCC_OCC_FID1_tbl['FD1']=line[76:93]
         OCC_OCC_FID1_tbl['FID_DATA1']=line[76:126] 
@@ -790,6 +792,8 @@ def process_TYPE3010B():
     initialize_tbl('OCC_OCC_FID2_tbl')
     OCC_OCC_FID2_tbl['OCC_FID1_ID']=occ_fid1_id
     OCC_OCC_FID2_tbl['CD_FID2']=cd_fid2
+    #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
+    #not part of the original FOCUS logic
     OCC_OCC_FID2_tbl['UNIQUE_CNTR']=0
     OCC_OCC_FID2_tbl['FID_DATA2']=line[76:126]
     OCC_OCC_FID2_tbl['INPUT_RECORDS']=str(record_id)
@@ -1057,6 +1061,8 @@ def process_3015BAN_50():
                 initialize_tbl('OCC_OCC_FID1_tbl') 
                 OCC_OCC_FID1_tbl['OCC_HDR_ID']=occ_hdr_id                      
                 OCC_OCC_FID1_tbl['CD_FID1']=cd_fid1
+                #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
+                #not part of the original FOCUS logic
                 OCC_OCC_FID1_tbl['UNIQUE_CNTR']=unique_cntr
                 OCC_OCC_FID1_tbl['FD1']=fd1
                 OCC_OCC_FID1_tbl['INPUT_RECORDS']=str(record_id)
@@ -1077,6 +1083,8 @@ def process_3015BAN_50():
                 initialize_tbl('OCC_OCC_FID2_tbl')
                 OCC_OCC_FID2_tbl['OCC_FID1_ID']=occ_fid1_id
                 OCC_OCC_FID2_tbl['CD_FID2']=cd_fid2 
+                #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
+                #not part of the original FOCUS logic
                 OCC_OCC_FID2_tbl['UNIQUE_CNTR']=unique_cntr
                 OCC_OCC_FID2_tbl['INPUT_RECORDS']=str(record_id)
                 occ_fid2_id=process_insert_table("CAIMS_OCC_OCC_FID2", OCC_OCC_FID2_tbl,OCC_OCC_FID2_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID2",output_log)  
@@ -1124,20 +1132,6 @@ def process_3015BAN_50():
         #        [181:182]      [182:198] [198:199]      [199:200]
         #FIXFORM PHCD_PFIIAIA/1 X16       BUS_RSDC_IND/1 PHCD_PFIIRIA/1 X25
         if occ_fid2_id > 0:
-            #dont check exists... we need an OCC_INFO table for every record out there.
-            #dont check exists... we need an OCC_INFO table for every record out there.
-            #dont check exists... we need an OCC_INFO table for every record out there.
-            #dont check exists... we need an OCC_INFO table for every record out there.
-            #dont check exists... we need an OCC_INFO table for every record out there.
-#            tmpTblRec={}
-#            tmpTblRec['OCC_FID2_ID']=occ_fid2_id
-#            tmpTblRec['PHRASE_CD']=OCC_OCC_INFO_tbl['PHRASE_CD']
-#            tmpinf=process_check_exists("CAIMS_OCC_OCC_INFO", tmpTblRec, OCC_OCC_INFO_DEFN_DICT,con,schema,output_log)
-#            del tmpTblRec
-#            if tmpinf>0:
-#                occ_info_id=tmpinf
-#                process_update_table("CAIMS_OCC_OCC_INFO", OCC_OCC_INFO_tbl, OCC_OCC_INFO_DEFN_DICT,con,schema,output_log)
-#            else:
             #no INITIALIZE
             OCC_OCC_INFO_tbl['SUP_AMT_LO']=convertnumber(line[110:121],2)
             OCC_OCC_INFO_tbl['RATEZONEIRIA']=line[122:123]
@@ -1220,10 +1214,12 @@ def process_3015SO_50():
         initialize_tbl('OCC_OCC_FID1_tbl') 
         OCC_OCC_FID1_tbl['OCC_HDR_ID']=occ_hdr_id                      
         OCC_OCC_FID1_tbl['CD_FID1']='nl' 
+        #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
+        #not part of the original FOCUS logic
         OCC_OCC_FID1_tbl['UNIQUE_CNTR']=unique_cntr
         OCC_OCC_FID1_tbl['FD1']=fd1
         OCC_OCC_FID1_tbl['INPUT_RECORDS']=str(record_id)
-#NEED TO CHECK EXISTS HERE        
+        
         if occ_hdr_id > 0:
             occ_fid1_id=process_insert_table("CAIMS_OCC_OCC_FID1", OCC_OCC_FID1_tbl,OCC_OCC_FID1_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID1",output_log)
         else:
@@ -1232,7 +1228,9 @@ def process_3015SO_50():
      
         initialize_tbl('OCC_OCC_FID2_tbl')
         OCC_OCC_FID2_tbl['OCC_FID1_ID']=occ_fid1_id
-        OCC_OCC_FID2_tbl['CD_FID2']='nl' 
+        OCC_OCC_FID2_tbl['CD_FID2']='nl'
+        #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
+        #not part of the original FOCUS logic
         OCC_OCC_FID2_tbl['UNIQUE_CNTR']=unique_cntr
         OCC_OCC_FID2_tbl['INPUT_RECORDS']=str(record_id)
 #NEED TO CHECK EXISTS HERE           
@@ -1398,6 +1396,8 @@ def process_3015CKT_50():
                     initialize_tbl('OCC_OCC_FID1_tbl') 
                     OCC_OCC_FID1_tbl['OCC_HDR_ID']=occ_hdr_id                      
                     OCC_OCC_FID1_tbl['CD_FID1']=cd_fid1 
+                    #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
+                    #not part of the original FOCUS logic
                     OCC_OCC_FID1_tbl['UNIQUE_CNTR']=unique_cntr 
                     OCC_OCC_FID1_tbl['FD1']=fd1
                     OCC_OCC_FID1_tbl['INPUT_RECORDS']=str(record_id)
@@ -1418,6 +1418,8 @@ def process_3015CKT_50():
                     initialize_tbl('OCC_OCC_FID2_tbl')
                     OCC_OCC_FID2_tbl['OCC_FID1_ID']=occ_fid1_id
                     OCC_OCC_FID2_tbl['CD_FID2']=cd_fid2
+                    #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
+                    #not part of the original FOCUS logic
                     OCC_OCC_FID2_tbl['UNIQUE_CNTR']=unique_cnt
                     OCC_OCC_FID2_tbl['INPUT_RECORDS']=str(record_id)
                     occ_fid2_id=process_insert_table("CAIMS_OCC_OCC_FID2", OCC_OCC_FID2_tbl,OCC_OCC_FID2_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID2",output_log)
@@ -1653,7 +1655,9 @@ def process_301550BAN():
         else:
             initialize_tbl('OCC_OCC_FID1_tbl') 
             OCC_OCC_FID1_tbl['OCC_HDR_ID']=occ_hdr_id                      
-            OCC_OCC_FID1_tbl['CD_FID1']='nl' 
+            OCC_OCC_FID1_tbl['CD_FID1']='nl'
+            #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
+            #not part of the original FOCUS logic
             OCC_OCC_FID1_tbl['UNIQUE_CNTR']=unique_cntr
             OCC_OCC_FID1_tbl['FD1']=fd1
             OCC_OCC_FID1_tbl['INPUT_RECORDS']=str(record_id)
@@ -1674,6 +1678,8 @@ def process_301550BAN():
             initialize_tbl('OCC_OCC_FID2_tbl')
             OCC_OCC_FID2_tbl['OCC_FID1_ID']=occ_fid1_id
             OCC_OCC_FID2_tbl['CD_FID2']='nl' 
+            #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
+            #not part of the original FOCUS logic
             OCC_OCC_FID2_tbl['UNIQUE_CNTR']=unique_cntr
             OCC_OCC_FID2_tbl['INPUT_RECORDS']=str(record_id)    
             occ_fid2_id=process_insert_table("CAIMS_OCC_OCC_FID2", OCC_OCC_FID2_tbl,OCC_OCC_FID2_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID2",output_log)  
@@ -1690,16 +1696,6 @@ def process_301550BAN():
         writelog("ERROR: OCCINFO not found?", output_log) 
     del tmpTblRec, inf
     
-#    if occ_fid2_id > 0:
-#        initialize_tbl('OCC_OCC_INFO_tbl')
-#        OCC_OCC_INFO_tbl['OCC_FID2_ID']=occ_fid2_id
-#        OCC_OCC_INFO_tbl['PHRASE_CD']=line[61:64]
-#        OCC_OCC_INFO_tbl['INPUT_RECORDS']=str(record_id)
-#        occ_info_id=process_insert_table("CAIMS_OCC_OCC_INFO", OCC_OCC_INFO_tbl,OCC_OCC_INFO_DEFN_DICT,con,schema,"SQ_OCC_OCC_INFO",output_log) 
-#        #dont check if OCC_INFO record exists.  we need a record for each occ_info record in the ip file
-#    else:
-#        writelog("ERROR: Cant insert OCC_INFO.   No parent FID2 record records", output_log) 
-
     if occ_info_id >0:
         initialize_tbl('OCC_PIDINF_tbl')
         OCC_PIDINF_tbl['OCC_INFO_ID']=occ_info_id
@@ -1828,6 +1824,8 @@ def process_301550SO():
                 initialize_tbl('OCC_OCC_FID1_tbl') 
                 OCC_OCC_FID1_tbl['OCC_HDR_ID']=occ_hdr_id                      
                 OCC_OCC_FID1_tbl['CD_FID1']=cd_fid1 
+                #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
+                #not part of the original FOCUS logic
                 OCC_OCC_FID1_tbl['UNIQUE_CNTR']=unique_cntr
                 OCC_OCC_FID1_tbl['FD1']=fd1
                 OCC_OCC_FID1_tbl['INPUT_RECORDS']=str(record_id)
@@ -1848,6 +1846,8 @@ def process_301550SO():
                 initialize_tbl('OCC_OCC_FID2_tbl')
                 OCC_OCC_FID2_tbl['OCC_FID1_ID']=occ_fid1_id
                 OCC_OCC_FID2_tbl['CD_FID2']=cd_fid2
+                #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
+                #not part of the original FOCUS logic
                 OCC_OCC_FID2_tbl['UNIQUE_CNTR']=unique_cntr
                 OCC_OCC_FID2_tbl['INPUT_RECORDS']=str(record_id)
                 occ_fid2_id=process_insert_table("CAIMS_OCC_OCC_FID2", OCC_OCC_FID2_tbl,OCC_OCC_FID2_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID2",output_log)
@@ -1863,28 +1863,6 @@ def process_301550SO():
          else:
              writelog("ERROR: OCCINFO not found?", output_log) 
          del tmpTblRec, inf
-#         if occ_fid2_id > 0:
-#            initialize_tbl('OCC_OCC_INFO_tbl')
-#            OCC_OCC_INFO_tbl['OCC_FID2_ID']=occ_fid2_id
-#            OCC_OCC_INFO_tbl['PHRASE_CD']=line[61:64]
-#            OCC_OCC_INFO_tbl['OCCFROMDTCC']=line[70:78]
-#            OCC_OCC_INFO_tbl['OCCTHRUDTCC']=line[78:86]
-#            OCC_OCC_INFO_tbl['FAC_CHG_TYPE']=line[86:87]
-#            OCC_OCC_INFO_tbl['RATEZONEIR']=line[87:88]
-#            OCC_OCC_INFO_tbl['RATEZONEIA']=line[88:89]
-#            OCC_OCC_INFO_tbl['SUP_AMT_IR']=convertnumber(line[89:100],2)
-#            OCC_OCC_INFO_tbl['SUP_AMT_IA']=convertnumber(line[100:111],2)  
-#            OCC_OCC_INFO_tbl['SUP_AMT_IRIA']=convertnumber(line[111:122],2)
-#            OCC_OCC_INFO_tbl['SUP_AMT_IAIA']=convertnumber(line[122:133],2)
-#            OCC_OCC_INFO_tbl['SUP_AMT_NONJ']=convertnumber(line[133:144],2)
-#            OCC_OCC_INFO_tbl['PCT_ORIG_USG']=convertnumber(line[188:191],0)
-#            OCC_OCC_INFO_tbl['PIU_INFO']=convertnumber(line[218:221],0)
-#            OCC_OCC_INFO_tbl['RC_NRC_IND']=line[222:223]
-#            OCC_OCC_INFO_tbl['ACC_TYPE']=line[224:225]
-#            OCC_OCC_INFO_tbl['INPUT_RECORDS']=str(record_id)
-#            occ_info_id=process_insert_table("CAIMS_OCC_OCC_INFO", OCC_OCC_INFO_tbl,OCC_OCC_INFO_DEFN_DICT,con,schema,"SQ_OCC_OCC_INFO",output_log)
-#         else:
-#            writelog("ERROR: no insert to OCC INFO. no parent occ_fid2 record",output_log)
 
          if occ_info_id > 0:
              initialize_tbl('OCC_PIDINF_tbl')
@@ -2021,6 +1999,8 @@ def process_301550CKT():
                 initialize_tbl('OCC_OCC_FID1_tbl') 
                 OCC_OCC_FID1_tbl['OCC_HDR_ID']=occ_hdr_id                      
                 OCC_OCC_FID1_tbl['CD_FID1']=cd_fid1 
+                #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
+                #not part of the original FOCUS logic
                 OCC_OCC_FID1_tbl['UNIQUE_CNTR']=unique_cntr 
                 OCC_OCC_FID1_tbl['FD1']=fd1
                 OCC_OCC_FID1_tbl['INPUT_RECORDS']=str(record_id)
@@ -2041,6 +2021,8 @@ def process_301550CKT():
                 initialize_tbl('OCC_OCC_FID2_tbl')
                 OCC_OCC_FID2_tbl['OCC_FID1_ID']=occ_fid1_id
                 OCC_OCC_FID2_tbl['CD_FID2']=cd_fid2
+                #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
+                #not part of the original FOCUS logic
                 OCC_OCC_FID2_tbl['UNIQUE_CNTR']=unique_cntr 
                 OCC_OCC_FID2_tbl['INPUT_RECORDS']=str(record_id)
                 occ_fid2_id=process_insert_table("CAIMS_OCC_OCC_FID2", OCC_OCC_FID2_tbl,OCC_OCC_FID2_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID2",output_log)
@@ -2056,28 +2038,6 @@ def process_301550CKT():
          else:
              writelog("ERROR: OCCINFO not found?", output_log) 
          del tmpTblRec, inf
-#         if occ_fid2_id > 0:
-#            initialize_tbl('OCC_OCC_INFO_tbl')
-#            OCC_OCC_INFO_tbl['OCC_FID2_ID']=occ_fid2_id
-#            OCC_OCC_INFO_tbl['PHRASE_CD']=line[61:64]
-#            OCC_OCC_INFO_tbl['OCCFROMDTCC']=line[70:78]
-#            OCC_OCC_INFO_tbl['OCCTHRUDTCC']=line[78:86]
-#            OCC_OCC_INFO_tbl['FAC_CHG_TYPE']=line[86:87]
-#            OCC_OCC_INFO_tbl['RATEZONEIR']=line[87:88]
-#            OCC_OCC_INFO_tbl['RATEZONEIA']=line[88:89]
-#            OCC_OCC_INFO_tbl['SUP_AMT_IR']=convertnumber(line[89:100],2)
-#            OCC_OCC_INFO_tbl['SUP_AMT_IA']=convertnumber(line[100:111],2)  
-#            OCC_OCC_INFO_tbl['SUP_AMT_IRIA']=convertnumber(line[111:122],2)
-#            OCC_OCC_INFO_tbl['SUP_AMT_IAIA']=convertnumber(line[122:133],2)
-#            OCC_OCC_INFO_tbl['SUP_AMT_NONJ']=convertnumber(line[133:144],2)
-#            OCC_OCC_INFO_tbl['PCT_ORIG_USG']=convertnumber(line[188:191],0)
-#            OCC_OCC_INFO_tbl['PIU_INFO']=convertnumber(line[218:221],0)
-#            OCC_OCC_INFO_tbl['RC_NRC_IND']=line[222:223]
-#            OCC_OCC_INFO_tbl['ACC_TYPE']=line[224:225]
-#            OCC_OCC_INFO_tbl['INPUT_RECORDS']=str(record_id)
-#            occ_info_id=process_insert_table("CAIMS_OCC_OCC_INFO", OCC_OCC_INFO_tbl,OCC_OCC_INFO_DEFN_DICT,con,schema,"SQ_OCC_OCC_INFO",output_log)
-#         else:
-#            writelog("ERROR: no insert to OCC INFO. no parent occ_fid2 record",output_log)
 
          if occ_info_id > 0:
              initialize_tbl('OCC_PIDINF_tbl')
