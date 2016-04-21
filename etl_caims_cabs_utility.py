@@ -22,7 +22,7 @@ global record_counts,unknown_record_counts
  
 #record_counts={}
 #unknown_record_counts={} 
- 
+##http://www.3480-3590-data-conversion.com/article-signed-fields.html
 MONTH_DICT={'01':'JAN','02':'FEB','03':'MAR','04':'APR','05':'MAY','06':'JUN','07':'JUL','08':'AUG','09':'SEP','10':'OCT','11':'NOV','12':'DEC',} 
 DIGIT_DICT={'0':'0','1':'1','2':'2','3':'3','4':'4','5':'5','6':'6','7':'7','8':'8','9':'9',\
             '{':'0','A':'1','B':'2','C':'3','D':'4','E':'5','F':'6','G':'7','H':'8','I':'9',\
@@ -110,7 +110,7 @@ def process_check_exists(tbl_name, tbl_rec,tbl_dic,con,schema,output_log):
 #        print "Number of rows updated: " + updCurs.count??????
         con.commit()
         
-        writelog("SUCCESSFUL RECORD CHECK TO  "+tbl_name+". result:"+str(val),output_log)
+        writelog("SUCCESSFUL RECORD CHECK TO  "+tbl_name+". result:"+str(result),output_log)
         
     except cx_Oracle.DatabaseError, exc:
         if ("%s" % exc.message).startswith('ORA-:'):

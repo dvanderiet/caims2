@@ -1529,12 +1529,14 @@ def endProg(msg):
     con.close()
     
     process_write_program_stats()
-     
     endTM=datetime.datetime.now()
+    
+    
+    writelog("\nStart time: %s" % (startTM),output_log)   
+    writelog("  End time: %s" % (endTM),output_log)  
     print "\nTotal run time:  %s" % (endTM-startTM)
     writelog("\nTotal run time:  %s" % (endTM-startTM),output_log)
      
-
     writelog("\n"+msg,output_log)
      
     process_close_files()

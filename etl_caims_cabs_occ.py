@@ -106,16 +106,9 @@ unknown_record_counts={}
 BILL_REC='10' 
 STAR_LINE='*********************************************************************************************'  
 
-#http://www.3480-3590-data-conversion.com/article-signed-fields.html
-
-
-   
-"TRANSLATERS"
-        
+"TRANSLATERS"      
     
 def init():
-    #debug("****** procedure==>  "+whereami()+" ******")
-    
     global occ_input 
     global record_id
     global output_log
@@ -125,7 +118,6 @@ def init():
     occ_input = open(IP_FILENM_AND_PATH, "r")
     
     
-
     "PROCESS HEADER LINE"
     "  -want to get bill cycle info for output log file "
     "  -this will make the log file names more sensical " 
@@ -152,13 +144,13 @@ def init():
     writelog("Input file: "+str(occ_input),output_log)
     writelog("Log file: "+str(output_log),output_log)
     
-    "Write header record informatio only"
+    "Write header record information only"
     writelog("Header Record Info:",output_log)
     writelog("     Record ID: "+record_id+" YY: "+cycl_yy+", MMDD: "+cycl_mmdd+", TIME: "+str(cycl_time),output_log)
     
     count_record(record_id,False)
     del headerLine,cycl_yy,cycl_mmdd,cycl_time
-#  PBCL.CY.XRU0102O.CABS.G0353V00.txt  
+ 
 def main():
     #OCC_config.initialize_OCC() 
     global record_type
@@ -180,8 +172,7 @@ def main():
     global occd_inf_id
     global occ_pidinf_id
 
-    "Counters"
-    
+    "Counters"  
     global inputLineCnt, OCC_KEY_cnt
 
     "TABLE Dictionaries - for each segment"
@@ -193,10 +184,8 @@ def main():
     global OCC_OCCD_INF_tbl, OCC_OCCD_INF_DEFN_DICT   
     global OCC_PIDINF_tbl, OCC_PIDINF_DEFN_DICT
 
-    
     "text files"
     global occ_input
-    
     
     global firstBillingRec
     firstBillingRec=True
@@ -235,13 +224,11 @@ def main():
     OCC_PIDINF_tbl=dict()
     OCC_PIDINF_DEFN_DICT=createTableTypeDict('CAIMS_OCC_PIDINF',con,schema,output_log)
 
-
     "COUNTERS"
     inputLineCnt=0
     OCC_KEY_cnt=0
     status_cnt=0
     "KEY"
-    
     prev_abbd_rec_key={'ACNA':'XXX','EOB_DATE':'990101','BAN':'000'}
     
     "LOOP THROUGH INPUT CABS TEXT FILE"
@@ -256,17 +243,14 @@ def main():
             status_cnt=0
         record_type=line[:2]
                
-        
         if len(line) > 231:
             record_id=line[225:231]
         else:
             record_id=line[:6]
 
-         
         "Process by record_id"
      
         "Header rec (first rec) processed in init()"
-          
              
         if record_type == BILL_REC:
             "START-MAIN PROCESS LOOP"
@@ -276,7 +260,6 @@ def main():
     #      badKey  #indicates empty ban or eob_date
     #      blankACNA #ok-well just insert without an ACNA  (i.e. ='nl')
     #      badCharsInACNA #warning- will insert w/out 
-            
             
             if badKey:
                 count_record("BAD_ABD_KEY",True)
@@ -313,7 +296,6 @@ def main():
     print str(inputLineCnt)+" lines completed processing...."   
 ###############################################main end#########################################################
 
-
 def log_footer_rec_info(): 
     global record_id,output_log
     
@@ -326,8 +308,7 @@ def log_footer_rec_info():
     writelog(" ",output_log)
     
     count_record(record_id,False)
-
-#             STRUCTURE OF FOCUS    FILE BCCBOCC  ON 11/06/12 AT 11.54.29
+#             STRUCTURE OF FOCUS    FILE BCCBOCC 
 #
 #         ROOTREC
 # 01      SH3
@@ -336,24 +317,19 @@ def log_footer_rec_info():
 #*ACNA        **I
 #*BAN         **I
 #*BILL_DATE   **I
-#*            **
 #***************
 # **************
 #       I
 #       +-----------------+
-#       I                 I
-#       I CUSTSEG         I OCC_HDR
+#       I CUSTSEG         I fd1
 # 02    I KU        04    I S2
 #..............    **************
 #:BAN         :K   *SODATECC    **I
 #:CUST_GROUP  :    *SO_ID       **
 #:MKT_ID      :    *UNIQUE_CNTR **
 #:SPLRID      :    *PON         **
-#:            :    *            **
 #:............:    ***************
 # JOINEDI BCCBCACB  **************
-#       I                 I
-#       I                 I
 #       I                 I
 #       I CUSTSEG2        I OCC_CK
 # 03    I KU        05    I S1
@@ -361,12 +337,8 @@ def log_footer_rec_info():
 #:CUST_GROUP  :K   *FD1         **
 #:CUST_GRP_NAM:    *            **
 #:BUS_OFC_ID  :    *            **
-#:            :    *            **
-#:            :    *            **
 #:............:    ***************
 # JOINED  BCTFCACG  **************
-#                         I
-#                         I
 #                         I
 #                         I OCC_FID1
 #                   06    I S1
@@ -375,24 +347,14 @@ def log_footer_rec_info():
 #                  *FID_DATA1   **
 #                  *PIU         **
 #                  *ASG         **
-#                  *            **
 #                  ***************
-#                   **************
-#                         I
-#                         I
 #                         I
 #                         I OCC_FID2
 #                   07    I S1
 #                  **************
 #                  *CD_FID2     **
 #                  *FID_DATA2   **
-#                  *            **
-#                  *            **
-#                  *            **
 #                  ***************
-#                   **************
-#                         I
-#                         I
 #                         I
 #                         I OCC_INFO
 #                   08    I S1
@@ -401,8 +363,6 @@ def log_footer_rec_info():
 #                  *OCCFROMDTCC **
 #                  *OCCTHRUDTCC **
 #                  *FAC_CHG_TYPE**
-#                  *            **
-#                  ***************
 #                   **************
 #                         I
 #       +-----------------+-----------------+
@@ -413,48 +373,27 @@ def log_footer_rec_info():
 #*USOC        **   *D_PLAN_ID   **    
 #*STATE       **   *D_DIS_PERCNT**    
 #*QTY_USOC    **   *D_DIS_PLAN_>**   
-#*FAC_CHG_IND **   *D_VOL_PLN_T>**    
-#*            **   *            **    
-#***************   ***************    
+#*FAC_CHG_IND **   *D_VOL_PLN_T>**     
 # **************    **************     
-#       I
-#       I
 #       I
 #       I PLN_INF   NOT USED
 # 10    I U
 #**************
  
-
-
-
 def process_occ_records():
     global record_id,output_log
     global firstBillingRec
-    global tstx, verno, tsty
-   
-    
-    tstx=line[77:79]
-    verno=line[82:84]
+
+#    verno=line[82:84]
     
     if firstBillingRec:
         "FIRST RECORD ONLY"
         #write BILL CYCLE DATE AND BOS version number to log
         writelog("Bill Cycle:"+line[13:15]+"/"+line[15:17]+"/20"+line[11:13],output_log)
         writelog("**--------------------------**",output_log)
-        writelog("** BOS VERSION NUMBER IS "+verno+" ** ",output_log)
+        writelog("** BOS VERSION NUMBER IS "+line[82:84]+" ** ",output_log)
         writelog("**--------------------------**",output_log)
         firstBillingRec=False
-#SAMPLE RECORD COUNT FOR PBCL.CY.XRU0102O.CABS.G0353V00.txt
-#010100, 695
-#050500, 695
-#300500, 245
-#301000, 500
-#301500, 982
-#301501, 982
-#301550, 173
-#302000, 809
-#302001, 809
-#302500, 245
        
     unknownRecord=False
     #BCCBBIL/ROOT/BALDUE always have 010100, 050500, and 051000    
@@ -479,17 +418,12 @@ def process_occ_records():
         unknownRecord=True
     
     count_record(record_id,unknownRecord)
-
-        
-    
     
 def process_getkey():
     global badKey
     global blankACNA
-    global  badCharsInACNA
+    global badCharsInACNA
   
-    
-    
     tmpACNA=line[6:11].rstrip(' ')
     tmpBAN=line[17:30].rstrip(' ')
     tmpEOB_DATE=line[11:17].rstrip(' ')
@@ -511,11 +445,8 @@ def process_getkey():
     if tmpBAN == '' or tmpEOB_DATE == '':
         badKey=True
         
-
-        
     return { 'ACNA':newACNA,'EOB_DATE':tmpEOB_DATE,'BAN':tmpBAN}     
      
-    
 def reset_record_flags():
     writelog("     " ,output_log)
     writelog("reset_record_flags" ,output_log)
@@ -523,7 +454,7 @@ def reset_record_flags():
     "The first time a record is processed, if the count == 0, then an insert will be performed,"
     "else an update."
     global bctfocc_id
-    global occ_hdr_id
+    global fd1_id
     global occ_fid1_id
     global occ_fid2_id
     global occ_info_id
@@ -543,12 +474,12 @@ def reset_record_flags():
     occ_fid2_id=0
     occ_info_id=0
     occd_inf_id=0
-    occ_hdr_id=0
+    fd1_id=0
     occ_pidinf_id=0
     pflag=''
     unique_cntr=0
     sodatecc='19000101'
-    so_id=0
+    so_id='nl'
     fd1=''
     cd_fid1=''
     cd_fid2=''
@@ -558,7 +489,6 @@ def reset_record_flags():
 def process_0101REC_39_ROOT():
     writelog(record_id+"--"+":0101REC_39_ROOT",output_log)
     global firstBillingRec
-    global verno
     global bctfocc_id
 #    global OCC_BCTFOCC_tbl,  OCC_BCTFOCC_DEFN_DICT  
     global pflag
@@ -581,7 +511,6 @@ def process_0101REC_39_ROOT():
 ##       [219:220]      [220:224]  [224:225]
 #FIXFORM UNB_SWA_PROV/1 X4         MPB/A1
 
-
     OCC_BCTFOCC_tbl['BILL_DATE']=line[71:76]
     OCC_BCTFOCC_tbl['TLF']=line[97:98]
     OCC_BCTFOCC_tbl['NLATA']=line[98:101]
@@ -594,11 +523,7 @@ def process_0101REC_39_ROOT():
     OCC_BCTFOCC_tbl['UNB_SWA_PROV']=line[219:220] 
     OCC_BCTFOCC_tbl['MAN_BAN_TYPE']=line[218:219] 
     OCC_BCTFOCC_tbl['MPB']=line[224:225]
-#    OCC_BCTFOCC_tbl['IBC_SBC']=line[xx:xx]
     OCC_BCTFOCC_tbl['INPUT_RECORDS']=str(record_id )
-    
-    
-    
     
 ##    OCC_BCTFOCC_tbl['BANLOCK']='N'    #defaulted db value
 ##    OCC_BCTFOCC_tbl['VERSION_NBR']=line[82:84] NOT IN mfd
@@ -636,7 +561,6 @@ def process_0505REC_ROOT():
    
     bctfocc_id=process_insert_table("CAIMS_OCC_BCTFOCC", OCC_BCTFOCC_tbl,OCC_BCTFOCC_DEFN_DICT,con,schema,"SQ_OCC_BCTFOCC",output_log)
     
-    
     writelog(record_id+"--"+"leaving process_0505REC_ROOT",output_log)
 
 
@@ -646,6 +570,7 @@ def process_3005REC_OCC_HDR():
     global pflag
     global unique_cntr
     global sodatecc
+    global so_id
     writelog(record_id+"--"+"XXXXX:3005REC_OCC_HDR",output_log)
     "300500"
 #FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13
@@ -658,35 +583,40 @@ def process_3005REC_OCC_HDR():
 #  SO_NRC=0;
 #  SO_BLD=0;
 
-
-
     unique_cntr+=1
     pflag='S'
- 
-    initialize_tbl('OCC_OCC_HDR_tbl')
-    OCC_OCC_HDR_tbl['BCTFOCC_ID']=bctfocc_id
     sodatecc=line[69:77]
-    OCC_OCC_HDR_tbl['SODATECC']=sodatecc
-    OCC_OCC_HDR_tbl['SO_ID']=line[77:89] 
-    OCC_OCC_HDR_tbl['UNIQUE_CNTR']=unique_cntr 
-    OCC_OCC_HDR_tbl['PON']=line[89:105]
-    OCC_OCC_HDR_tbl['SO_MONTHLY']=0
-    OCC_OCC_HDR_tbl['SO_FRAC']=0
-    OCC_OCC_HDR_tbl['SO_NRC']=0
-    OCC_OCC_HDR_tbl['SO_BLD']=0
-    OCC_OCC_HDR_tbl['EXT_EC_RPR_TKT_NO']=line[146:166]
-    OCC_OCC_HDR_tbl['INPUT_RECORDS']=str(record_id)
+    so_id=line[77:89]
+
+    
     if bctfocc_id > 0:
-        occ_hdr_id=process_insert_table("CAIMS_OCC_OCC_HDR", OCC_OCC_HDR_tbl,OCC_OCC_HDR_DEFN_DICT,con,schema,"SQ_OCC_OCC_HDR",output_log)
+        tmpTblRec={}
+        tmpTblRec['BCTFOCC_ID']=bctfocc_id
+        tmpTblRec['SODATECC']=sodatecc
+        tmpTblRec['SO_ID']=so_id       
+        hdr=process_check_exists("OCC_OCC_HDR_tbl", tmpTblRec, OCC_OCC_HDR_DEFN_DICT,con,schema,output_log)     
+        if hdr>0:
+            occ_hdr_id=hdr
+            writelog("bypassed in process_3005REC_OCC_HDR",output_log)
+        else:
+            initialize_tbl('OCC_OCC_HDR_tbl')
+            OCC_OCC_HDR_tbl['BCTFOCC_ID']=bctfocc_id
+            OCC_OCC_HDR_tbl['SODATECC']=sodatecc
+            OCC_OCC_HDR_tbl['SO_ID']=so_id
+            OCC_OCC_HDR_tbl['UNIQUE_CNTR']=unique_cntr 
+            OCC_OCC_HDR_tbl['PON']=line[89:105]
+            OCC_OCC_HDR_tbl['SO_MONTHLY']=0
+            OCC_OCC_HDR_tbl['SO_FRAC']=0
+            OCC_OCC_HDR_tbl['SO_NRC']=0
+            OCC_OCC_HDR_tbl['SO_BLD']=0
+            OCC_OCC_HDR_tbl['EXT_EC_RPR_TKT_NO']=line[146:166]
+            OCC_OCC_HDR_tbl['INPUT_RECORDS']=str(record_id)
+            writelog("created in process_3005REC_OCC_HDR",output_log)
+            occ_hdr_id=process_insert_table("CAIMS_OCC_OCC_HDR", OCC_OCC_HDR_tbl,OCC_OCC_HDR_DEFN_DICT,con,schema,"SQ_OCC_OCC_HDR",output_log) 
+        del tmpTblRec, hdr    
     else:
-        writelog("no insert to occ hdr. due to no root record",output_log)
-#    writelog(str(record_id)+"OCC_HDR",output_log)
+        writelog("ERROR:No insert to occ_hdr. No root record",output_log)
 
-#   INSERT RECORD IN 302500 record?
-
-
- 
- 
 #  UNIQUE_CNTR/I5= UNIQUE_CNTR +1;
 #MATCH EOB_DATE ACNA BAN  ROOTREC
 #   ON MATCH   CONTINUE
@@ -718,32 +648,43 @@ def process_3025REC_OCC_HDR():
     global crnt1_id
     global crnt2_id
     global unique_cntr
+    global sodatecc
+    global so_id
     writelog(record_id+"--"+"XXXXX:3025REC_OCC_HDR",output_log)
-    "Dont initialize.  Initialization was done in process_3005REC_OCC_HDR para"
+    
 #   FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13
 #           [30:166] [166:177]        [177:188]   
 #   FIXFORM X136     SO_MONTHLY/Z11.2 SO_FRAC/Z11.2
 #           [188:199]     [199:201]
 #   FIXFORM SO_NRC/Z11.2  SO_BLD/Z11.2
  
-#    initialiaze only certain fields for the update
-#   keep key values
-    OCC_OCC_HDR_tbl['PON']=' '
-    OCC_OCC_HDR_tbl['EXT_EC_RPR_TKT_NO']=''
- 
-
- #new fields to update    
-       
+    initialize_tbl('OCC_OCC_HDR_tbl')
+    OCC_OCC_HDR_tbl['BCTFOCC_ID']=bctfocc_id
+    OCC_OCC_HDR_tbl['SO_ID']=so_id
+    OCC_OCC_HDR_tbl['SODATECC']=sodatecc
+    OCC_OCC_HDR_tbl['UNIQUE_CNTR']=unique_cntr
     OCC_OCC_HDR_tbl['SO_MONTHLY']=convertnumber(line[166:177],2)
     OCC_OCC_HDR_tbl['SO_FRAC']=convertnumber(line[177:188],20)
     OCC_OCC_HDR_tbl['SO_NRC']=convertnumber(line[188:199],2)
     OCC_OCC_HDR_tbl['SO_BLD']=convertnumber(line[199:201],2)
-    OCC_OCC_HDR_tbl['INPUT_RECORDS']+=","+str(record_id)
+    OCC_OCC_HDR_tbl['INPUT_RECORDS']=str(record_id)
 
-    process_update_table("CAIMS_OCC_OCC_HDR", OCC_OCC_HDR_tbl, OCC_OCC_HDR_DEFN_DICT,con,schema,output_log)
+    if bctfocc_id > 0:        
+        tmpTblRec={}
+        tmpTblRec['BCTFOCC_ID']=bctfocc_id
+        tmpTblRec['SO_ID']=so_id
+        tmpTblRec['SODATECC']=sodatecc
+       
+        if occ_hdr_id > 0 and process_check_exists("CAIMS_OCC_OCC_HDR", tmpTblRec, OCC_OCC_HDR_DEFN_DICT,con,schema,output_log):
+            process_update_table("CAIMS_OCC_OCC_HDR", OCC_OCC_HDR_tbl, OCC_OCC_HDR_DEFN_DICT,con,schema,output_log)
+            writelog("bypassed in process_3025REC_OCC_HDR",output_log)
+        else:
+            writelog("created in process_3025REC_OCC_HDR",output_log)
+            occ_hdr_id=process_insert_table("CAIMS_OCC_OCC_HDR", OCC_OCC_HDR_tbl,OCC_OCC_HDR_DEFN_DICT,con,schema,"SQ_OCC_OCC_HDR",output_log)
+        del tmpTblRec
+    else:
+        writelog("ERROR?: no insert to occ hdr. due to no root record",output_log)
     
-
-#    writelog(str(record_id)+"OCC_HDR   update",output_log)
     writelog(record_id+"--"+"leaving process_3025REC_OCC_HDR",output_log)
  
     
@@ -772,6 +713,7 @@ def process_3010REC_OCC_FID():
 def process_TYPE3010A():
     global occ_hdr_id
     global occ_fid1_id
+    global occ_fid2_id
     global cd_fid1
     global bctfocc_id
     global pflag
@@ -807,6 +749,7 @@ def process_TYPE3010A():
         initialize_tbl('OCC_OCC_FID1_tbl') 
         OCC_OCC_FID1_tbl['OCC_HDR_ID']=occ_hdr_id                      
         OCC_OCC_FID1_tbl['CD_FID1']=cd_fid1
+        OCC_OCC_FID1_tbl['UNIQUE_CNTR']=0
         OCC_OCC_FID1_tbl['FD1']=line[76:93]
         OCC_OCC_FID1_tbl['FID_DATA1']=line[76:126] 
         OCC_OCC_FID1_tbl['PIU']=line[126:129]
@@ -821,9 +764,7 @@ def process_TYPE3010A():
         occ_fid1_id=process_insert_table("CAIMS_OCC_OCC_FID1", OCC_OCC_FID1_tbl,OCC_OCC_FID1_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID1",output_log)           
     else:             
         writelog("ERROR: in process_TYPE3010A.  occ_hdr_id is 0" ,output_log)
-
-           
-            
+     
     writelog(record_id+"--"+"leaving process_TYPE3010A",output_log)   
 
 
@@ -845,18 +786,29 @@ def process_TYPE3010B():
 #    
 #FIXFORM PCT_VOIP_USG/Z5.2 X39 PCT_ORIG_USAGE/3 X31 CKT_SUPI_IND/A1
 #FIXFORM X1
-  
-  
+    cd_fid2=line[71:76] 
     initialize_tbl('OCC_OCC_FID2_tbl')
     OCC_OCC_FID2_tbl['OCC_FID1_ID']=occ_fid1_id
-    OCC_OCC_FID2_tbl['CD_FID2']=line[71:76] 
+    OCC_OCC_FID2_tbl['CD_FID2']=cd_fid2
+    OCC_OCC_FID2_tbl['UNIQUE_CNTR']=0
     OCC_OCC_FID2_tbl['FID_DATA2']=line[76:126]
     OCC_OCC_FID2_tbl['INPUT_RECORDS']=str(record_id)
-    
-    if occ_fid1_id >0:   
-        occ_fid2_id=process_insert_table("CAIMS_OCC_OCC_FID2", OCC_OCC_FID2_tbl,OCC_OCC_FID2_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID2",output_log)
+   
+    if occ_fid1_id > 0:
+       tmpTblRec={}
+       tmpTblRec['OCC_FID1_ID']=occ_fid1_id
+       tmpTblRec['CD_FID2']=cd_fid2 
+       tmpTblRec['UNIQUE_CNTR']=0
+       f2=process_check_exists("CAIMS_OCC_OCC_FID2", tmpTblRec, OCC_OCC_FID2_DEFN_DICT,con,schema,output_log)     
+       if f2>0:    # we want to insert if it exists too...just update the sequence to get around the key
+           OCC_OCC_FID2_tbl['UNIQUE_CNTR']+=1
+       del tmpTblRec, f2
+       occ_fid2_id=process_insert_table("CAIMS_OCC_OCC_FID2", OCC_OCC_FID2_tbl,OCC_OCC_FID2_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID2",output_log)
+
     else:
-        writelog("fid2 insert skipped due to no fid1 record", output_log)
+       writelog("ERROR:No insert to OCC_FID2. No FID1 record",output_log)
+    
+        
 #    writelog(str(record_id)+"OCC_FID2",output_log)    
 #IF PFLAG NE 'C' OR 'L' GOTO TOP;
 #COMPUTE
@@ -879,7 +831,6 @@ def process_ASGTEMP():
     pflag='A'
     writelog(record_id+"--"+"leaving process_ASGTEMP",output_log)
 
-
 def process_3015DRVR_50():   
     global bctfocc_id
     global occ_hdr_id
@@ -889,9 +840,10 @@ def process_3015DRVR_50():
     global output_log
     global pflag
     
- 
     "301500"  "301501"
-      
+    "theres always even pairs of these records which should result in the creation"
+    "of OCC_INFO records"    
+    
     writelog(record_id+"--"+"BBBBB:3015DRVR_50 - BRANCH to OCC-INFO",output_log)
       
     if pflag == 'L':
@@ -908,11 +860,11 @@ def process_3015REC_50():
     "301500"
     "301501"
     global bctfocc_id
+    global occ_fid1_id
     global occ_fid2_id
     global occ_info_id
     global pflag
     writelog(record_id+"--"+"BBBBBB:3015REC_50",output_log)
-     
     #FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13
     #        [30:61]   [61:64]      [64:70]
     #FIXFORM X31       PHRASE_CD/A3 X6
@@ -970,25 +922,15 @@ def process_3015REC_50():
         OCC_OCC_INFO_tbl['PHCD_PFIIRIA']=line[199:200]
         OCC_OCC_INFO_tbl['BUS_RSDC_IND']=line[198:199]
         OCC_OCC_INFO_tbl['INPUT_RECORDS']+=","+str(record_id)
-        
-        
+#MATCH PHRASE_CD   OCC_INFO
+#     ON MATCH INCLUDE
+#     ON NOMATCH INCLUDE
         "NOTE-according to the log there appears to be an insert for every 301500/301501 set of records."
         if occ_fid2_id > 0:
             occ_info_id=process_insert_table("CAIMS_OCC_OCC_INFO", OCC_OCC_INFO_tbl,OCC_OCC_INFO_DEFN_DICT,con,schema,"SQ_OCC_OCC_INFO",output_log)
         else:
-            writelog("ERROR: Cant write OCC_INFO record. - No OCC_FID2 header record", output_log)
-#            tmpTblRec={}
-#            tmpTblRec['OCC_FID2_ID']=OCC_OCC_INFO_tbl['OCC_FID2_ID']
-#            tmpTblRec['PHRASE_CD']=OCC_OCC_INFO_tbl['PHRASE_CD']
-#            if process_check_exists("CAIMS_OCC_OCC_INFO", tmpTblRec, OCC_OCC_INFO_DEFN_DICT,con,schema,output_log)>0:
-#                process_update_table("CAIMS_OCC_OCC_INFO", OCC_OCC_INFO_tbl, OCC_OCC_INFO_DEFN_DICT,con,schema,output_log) 
-##            writeline("AVOIDING A DUPLICATE RECORD HERE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",output_log)
-#            else:    
-#                occ_info_id=process_insert_table("CAIMS_OCC_OCC_INFO", OCC_OCC_INFO_tbl,OCC_OCC_INFO_DEFN_DICT,con,schema,"SQ_OCC_OCC_INFO",output_log)
-##        writelog(str(record_id)+"OCC_INFO",output_log)    
-#        else:
-#            writelog("Skipping OCC-INFO - No header record", output_log)
-            
+            writelog("ERROR: Cant write OCC_INFO record. - No OCC_FID2 header record", output_log)  
+        
     writelog(record_id+"--"+"leaving process_3015REC_50",output_log)
  
 def process_3015BAN_50(): 
@@ -1012,8 +954,7 @@ def process_3015BAN_50():
 #-*     THIS CASE LOADS BAN LEVEL CHARGES.
 #-*     THOSE 103015 RECORDS THAT DON'T HAVE   103005, OR 103010
 #-*     RECORDS
-#-* **************************************************************
-        
+#-* *************************************************************
     "same fixform as 3015CKT_50()"
 #DEACTIVATE  SODATECC SO_ID PON EXT_EC_RPR_TKT_NO SO_MONTHLY SO_FRAC
 #DEACTIVATE  SO_BLD SO_NRC
@@ -1079,19 +1020,21 @@ def process_3015BAN_50():
             tmpTblRec['BCTFOCC_ID']=bctfocc_id
             tmpTblRec['SO_ID']=so_id
             tmpTblRec['SODATECC']=sodatecc
+            tmpTblRec['UNIQUE_CNTR']=unique_cntr
             
             hdr=process_check_exists("CAIMS_OCC_OCC_HDR", tmpTblRec, OCC_OCC_HDR_DEFN_DICT,con,schema,output_log)
             del tmpTblRec 
             if hdr>0:
+                writelog("bypassed in process_3015BAN_50",output_log)
                 occ_hdr_id=hdr
                 del hdr
             else:
+                writelog("created in process_3015BAN_50",output_log)
                 occ_hdr_id=process_insert_table("CAIMS_OCC_OCC_HDR", OCC_OCC_HDR_tbl,OCC_OCC_HDR_DEFN_DICT,con,schema,"SQ_OCC_OCC_HDR",output_log)
                     
         else:
             writelog("ERROR?: no insert to occ hdr. due to no root record",output_log)
-               
-    
+
     #    MATCH FD1	  OCC_CK
     #      ON NOMATCH INCLUDE
     #      ON MATCH CONTINUE
@@ -1100,14 +1043,12 @@ def process_3015BAN_50():
     #      ON NOMATCH INCLUDE
     #      ON MATCH CONTINUE
 
-
-        
-
         if occ_hdr_id > 0:
             tmpTblRec={}
             tmpTblRec['OCC_HDR_ID']=occ_hdr_id
             tmpTblRec['CD_FID1']=cd_fid1
             tmpTblRec['FD1']=fd1
+            tmpTblRec['UNIQUE_CNTR']=unique_cntr
             tmpid=process_check_exists("CAIMS_OCC_OCC_FID1", tmpTblRec, OCC_OCC_FID1_DEFN_DICT,con,schema,output_log)        
             del tmpTblRec
             if tmpid>0:
@@ -1115,18 +1056,19 @@ def process_3015BAN_50():
             else:
                 initialize_tbl('OCC_OCC_FID1_tbl') 
                 OCC_OCC_FID1_tbl['OCC_HDR_ID']=occ_hdr_id                      
-                OCC_OCC_FID1_tbl['CD_FID1']=cd_fid1 
+                OCC_OCC_FID1_tbl['CD_FID1']=cd_fid1
+                OCC_OCC_FID1_tbl['UNIQUE_CNTR']=unique_cntr
                 OCC_OCC_FID1_tbl['FD1']=fd1
                 OCC_OCC_FID1_tbl['INPUT_RECORDS']=str(record_id)
                 occ_fid1_id=process_insert_table("CAIMS_OCC_OCC_FID1", OCC_OCC_FID1_tbl,OCC_OCC_FID1_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID1",output_log)
         else:
-            writelog("ERROR:insert to occ_fid1.  No OCC_HDR record", output_log)
-          
+            writelog("ERROR:insert to occ_fid1.  No OCC_HDR record", output_log)    
 
         if occ_fid1_id >0:   
             tmpTblRec={}
             tmpTblRec['OCC_FID1_ID']=occ_fid1_id
-            tmpTblRec['CD_FID2']=cd_fid2            
+            tmpTblRec['CD_FID2']=cd_fid2 
+            tmpTblRec['UNIQUE_CNTR']=unique_cntr
             fid2=process_check_exists("CAIMS_OCC_OCC_FID2", tmpTblRec, OCC_OCC_FID2_DEFN_DICT,con,schema,output_log)   
             del tmpTblRec
             if fid2>0:
@@ -1135,13 +1077,12 @@ def process_3015BAN_50():
                 initialize_tbl('OCC_OCC_FID2_tbl')
                 OCC_OCC_FID2_tbl['OCC_FID1_ID']=occ_fid1_id
                 OCC_OCC_FID2_tbl['CD_FID2']=cd_fid2 
+                OCC_OCC_FID2_tbl['UNIQUE_CNTR']=unique_cntr
                 OCC_OCC_FID2_tbl['INPUT_RECORDS']=str(record_id)
                 occ_fid2_id=process_insert_table("CAIMS_OCC_OCC_FID2", OCC_OCC_FID2_tbl,OCC_OCC_FID2_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID2",output_log)  
         else:
             writelog("ERROR:NO fid2 insert.  No OCC_FID1 record", output_log)
-        
-        
-        
+         
     #    MATCH CD_FID2  OCC_FID2
     #      ON NOMATCH INCLUDE
     #      ON MATCH CONTINUE
@@ -1168,15 +1109,10 @@ def process_3015BAN_50():
         OCC_OCC_INFO_tbl['INPUT_RECORDS']=str(record_id)
         ##DO NOT INSERT>... RECORD 301501 - Next will do the insert
 
-
- 
-      
-
 #    MATCH PHRASE_CD  OCC_INFO
 #         ON NOMATCH INCLUDE
 #         ON MATCH INCLUDE    
 
-        
     elif record_id=='301501':
         "301501"
         #                         [110:121]        [121:122] [122:123]
@@ -1187,26 +1123,17 @@ def process_3015BAN_50():
         #FIXFORM PHCD_PFBAND2/3 AUDIT_NUMBER/16 PHCD_PFIIR/1 PHCD_PFIIA/1
         #        [181:182]      [182:198] [198:199]      [199:200]
         #FIXFORM PHCD_PFIIAIA/1 X16       BUS_RSDC_IND/1 PHCD_PFIIRIA/1 X25
-        
- 
-
-    
         if occ_fid2_id > 0:
             #dont check exists... we need an OCC_INFO table for every record out there.
             #dont check exists... we need an OCC_INFO table for every record out there.
             #dont check exists... we need an OCC_INFO table for every record out there.
             #dont check exists... we need an OCC_INFO table for every record out there.
             #dont check exists... we need an OCC_INFO table for every record out there.
-        
-        
 #            tmpTblRec={}
 #            tmpTblRec['OCC_FID2_ID']=occ_fid2_id
 #            tmpTblRec['PHRASE_CD']=OCC_OCC_INFO_tbl['PHRASE_CD']
 #            tmpinf=process_check_exists("CAIMS_OCC_OCC_INFO", tmpTblRec, OCC_OCC_INFO_DEFN_DICT,con,schema,output_log)
 #            del tmpTblRec
-            
-           
-            
 #            if tmpinf>0:
 #                occ_info_id=tmpinf
 #                process_update_table("CAIMS_OCC_OCC_INFO", OCC_OCC_INFO_tbl, OCC_OCC_INFO_DEFN_DICT,con,schema,output_log)
@@ -1228,10 +1155,7 @@ def process_3015BAN_50():
             occ_info_id=process_insert_table("CAIMS_OCC_OCC_INFO", OCC_OCC_INFO_tbl,OCC_OCC_INFO_DEFN_DICT,con,schema,"SQ_OCC_OCC_INFO",output_log)
         else:
             writelog("ERROR: Cant insert OCC_INFO.   No parent FID2 record records", output_log)
-                        
-        
-
-        
+                         
     writelog(record_id+"--"+"leaving process_3015BAN_50",output_log)
 
 
@@ -1245,7 +1169,6 @@ def process_3015SO_50():
     global bctfocc_id
     global sodatecc
     global fd1
-    
     writelog(record_id+"--"+"BBBBBB:3015SO_50",output_log)
 #FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13
 #        [30:61]   [61:64]      [64:70]
@@ -1274,30 +1197,33 @@ def process_3015SO_50():
         OCC_OCC_HDR_tbl['SO_BLD']=0
         OCC_OCC_HDR_tbl['INPUT_RECORDS']=str(record_id)
         
-
         if bctfocc_id > 0:
             tmpTblRec={}
             tmpTblRec['BCTFOCC_ID']=bctfocc_id
             tmpTblRec['SO_ID']=OCC_OCC_HDR_tbl['SO_ID']
             tmpTblRec['SODATECC']=sodatecc
+            tmpTblRec['UNIQUE_CNTR']=unique_cntr
             fd1='nl'
             hdr=process_check_exists("CAIMS_OCC_OCC_HDR", tmpTblRec, OCC_OCC_HDR_DEFN_DICT,con,schema,output_log)
             del tmpTblRec
             if hdr>0:
+                writelog("bypassed in process_3015SO_50",output_log)
                 occ_hdr_id=hdr
                 del hdr
             else:
+                writelog("created in process_3015SO_50",output_log)
                 occ_hdr_id=process_insert_table("CAIMS_OCC_OCC_HDR", OCC_OCC_HDR_tbl,OCC_OCC_HDR_DEFN_DICT,con,schema,"SQ_OCC_OCC_HDR",output_log)
                 
         else:
             writelog("ERROR?: no insert to occ hdr. due to no root record",output_log)
            
-       
         initialize_tbl('OCC_OCC_FID1_tbl') 
         OCC_OCC_FID1_tbl['OCC_HDR_ID']=occ_hdr_id                      
         OCC_OCC_FID1_tbl['CD_FID1']='nl' 
+        OCC_OCC_FID1_tbl['UNIQUE_CNTR']=unique_cntr
         OCC_OCC_FID1_tbl['FD1']=fd1
         OCC_OCC_FID1_tbl['INPUT_RECORDS']=str(record_id)
+#NEED TO CHECK EXISTS HERE        
         if occ_hdr_id > 0:
             occ_fid1_id=process_insert_table("CAIMS_OCC_OCC_FID1", OCC_OCC_FID1_tbl,OCC_OCC_FID1_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID1",output_log)
         else:
@@ -1307,16 +1233,14 @@ def process_3015SO_50():
         initialize_tbl('OCC_OCC_FID2_tbl')
         OCC_OCC_FID2_tbl['OCC_FID1_ID']=occ_fid1_id
         OCC_OCC_FID2_tbl['CD_FID2']='nl' 
+        OCC_OCC_FID2_tbl['UNIQUE_CNTR']=unique_cntr
         OCC_OCC_FID2_tbl['INPUT_RECORDS']=str(record_id)
+#NEED TO CHECK EXISTS HERE           
         if occ_fid1_id >0:   
             occ_fid2_id=process_insert_table("CAIMS_OCC_OCC_FID2", OCC_OCC_FID2_tbl,OCC_OCC_FID2_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID2",output_log)
         else:
             writelog("ERROR: fid2 insert skipped due to no fid1 record", output_log) 
-         
- 
-
      
-
         initialize_tbl('OCC_OCC_INFO_tbl')
         OCC_OCC_INFO_tbl['OCC_FID2_ID']=occ_fid2_id
         OCC_OCC_INFO_tbl['PHRASE_CD']=line[61:64]
@@ -1361,16 +1285,12 @@ def process_3015SO_50():
 
         OCC_OCC_INFO_tbl['INPUT_RECORDS']+=","+str(record_id)
         
-        
         if occ_fid2_id > 0:        
         
             occ_info_id=process_insert_table("CAIMS_OCC_OCC_INFO", OCC_OCC_INFO_tbl,OCC_OCC_INFO_DEFN_DICT,con,schema,"SQ_OCC_OCC_INFO",output_log)
         else:
-            writelog("ERROR: NO write of occ-info since there is no fid2 header record", output_log)
-#        writelog(str(record_id)+"OCC_INFO",output_log)    
+            writelog("ERROR: NO write of occ-info since there is no fid2 header record", output_log)   
  
-
-#
 #    MATCH EOB_DATE ACNA BAN  ROOTREC
 #    ON NOMATCH TYPE "CASE 3015SO_50  - NOMATCH DATE ACNA BAN - REJECTED"
 #      ON NOMATCH REJECT
@@ -1404,8 +1324,6 @@ def process_3015SO_50():
 #         ON MATCH INCLUDE
     writelog(record_id+"--"+"leaving process_3015SO_50",output_log)   
     
-    
- 
 def process_3015CKT_50():
     global pflag
     global occ_info_id
@@ -1438,7 +1356,6 @@ def process_3015CKT_50():
 #        [221:222] [222:223]     [223:224]  [224:225]
 #FIXFORM X1        RC_NRC_IND/A1 X1         ACC_TYPE/1 X6
     
-    
     if record_id == '301500':
         if bctfocc_id > 0:
     #        set  SODATECC=SODATECC;
@@ -1457,6 +1374,7 @@ def process_3015CKT_50():
              hdr=process_check_exists("CAIMS_OCC_OCC_HDR", tmpTblRec, OCC_OCC_HDR_DEFN_DICT,con,schema,output_log)
              del tmpTblRec
              if hdr>0:
+                 writelog("bypassed in process_3015CKT_50",output_log)
                  occ_hdr_id=hdr
                  del hdr
              else:
@@ -1466,11 +1384,12 @@ def process_3015CKT_50():
                  OCC_OCC_HDR_tbl['SODATECC']=sodatecc
                  OCC_OCC_HDR_tbl['UNIQUE_CNTR']=unique_cntr 
                  occ_hdr_id=process_insert_table("CAIMS_OCC_OCC_HDR", OCC_OCC_HDR_tbl,OCC_OCC_HDR_DEFN_DICT,con,schema,"SQ_OCC_OCC_HDR",output_log)
-             
+                 writelog("created in process_3015CKT_50",output_log)
              if occ_hdr_id > 0:
                 tmpTblRec={}
                 tmpTblRec['OCC_HDR_ID']=occ_hdr_id
                 tmpTblRec['CD_FID1']=cd_fid1
+                tmpTblRec['UNIQUE_CNTR']=unique_cntr 
                 tmpid=process_check_exists("CAIMS_OCC_OCC_FID1", tmpTblRec, OCC_OCC_FID1_DEFN_DICT,con,schema,output_log)  
                 del tmpTblRec
                 if tmpid>0:
@@ -1479,17 +1398,18 @@ def process_3015CKT_50():
                     initialize_tbl('OCC_OCC_FID1_tbl') 
                     OCC_OCC_FID1_tbl['OCC_HDR_ID']=occ_hdr_id                      
                     OCC_OCC_FID1_tbl['CD_FID1']=cd_fid1 
+                    OCC_OCC_FID1_tbl['UNIQUE_CNTR']=unique_cntr 
                     OCC_OCC_FID1_tbl['FD1']=fd1
                     OCC_OCC_FID1_tbl['INPUT_RECORDS']=str(record_id)
                     occ_fid1_id=process_insert_table("CAIMS_OCC_OCC_FID1", OCC_OCC_FID1_tbl,OCC_OCC_FID1_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID1",output_log)
              else:
                 writelog("ERROR:insert to occfid1 skipped since there was no occ_hdr record", output_log)
                 
-    
              if occ_fid1_id >0:  
                 tmpTblRec={}
                 tmpTblRec['OCC_FID1_ID']=occ_fid1_id
-                tmpTblRec['CD_FID1']=cd_fid1
+                tmpTblRec['CD_FID2']=cd_fid2
+                tmpTblRec['UNIQUE_CNTR']=unique_cntr
                 tmpid=process_check_exists("CAIMS_OCC_OCC_FID2", tmpTblRec, OCC_OCC_FID2_DEFN_DICT,con,schema,output_log)  
                 del tmpTblRec
                 if tmpid >0:
@@ -1498,12 +1418,12 @@ def process_3015CKT_50():
                     initialize_tbl('OCC_OCC_FID2_tbl')
                     OCC_OCC_FID2_tbl['OCC_FID1_ID']=occ_fid1_id
                     OCC_OCC_FID2_tbl['CD_FID2']=cd_fid2
+                    OCC_OCC_FID2_tbl['UNIQUE_CNTR']=unique_cnt
                     OCC_OCC_FID2_tbl['INPUT_RECORDS']=str(record_id)
                     occ_fid2_id=process_insert_table("CAIMS_OCC_OCC_FID2", OCC_OCC_FID2_tbl,OCC_OCC_FID2_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID2",output_log)
              else:
                     writelog("ERROR: fid2 insert skipped due to no fid1 record", output_log) 
              
-     
              if occ_fid2_id > 0:
                 initialize_tbl('OCC_OCC_INFO_tbl')
                 OCC_OCC_INFO_tbl['OCC_FID2_ID']=occ_fid2_id
@@ -1524,13 +1444,9 @@ def process_3015CKT_50():
                 OCC_OCC_INFO_tbl['ACC_TYPE']=line[224:225]
                 OCC_OCC_INFO_tbl['INPUT_RECORDS']=str(record_id)
              else:
-                writelog("ERROR: no insert to OCC INFO. no parent occ_fid2 record",output_log)
-    
-    
-              
+                writelog("ERROR: no insert to OCC INFO. no parent occ_fid2 record",output_log)        
         else:
-           writelog("ERROR: no insert to occ hdr. due to no root record",output_log)
-           
+           writelog("ERROR: no insert to occ hdr. due to no root record",output_log)    
     elif record_id=='301501':
         "301501"    
          #                         [110:121]        [121:122] [122:123]
@@ -1556,15 +1472,11 @@ def process_3015CKT_50():
         OCC_OCC_INFO_tbl['PHCD_PFIIRIA']=line[199:200]
 
         OCC_OCC_INFO_tbl['INPUT_RECORDS']+=","+str(record_id)
-        
-        
+
         if occ_fid2_id > 0:        
             occ_info_id=process_insert_table("CAIMS_OCC_OCC_INFO", OCC_OCC_INFO_tbl,OCC_OCC_INFO_DEFN_DICT,con,schema,"SQ_OCC_OCC_INFO",output_log)
         else:
-            writelog("Skipping write of occ-info since there is no header record", output_log)  
-        
-       
-#
+            writelog("Skipping write of occ-info since there is no header record", output_log)        
 #    MATCH EOB_DATE ACNA BAN  ROOTREC
 #    ON NOMATCH TYPE "CASE 3015CKT_50- NOMATCH DATE ACNA BAN - REJECTED"
 #      ON NOMATCH REJECT
@@ -1593,7 +1505,6 @@ def process_3015CKT_50():
 #    MATCH PHRASE_CD  OCC_INFO
 #         ON NOMATCH INCLUDE
 #         ON MATCH INCLUDE
-    
     writelog(record_id+"--"+"leaving process_3015CKT_50",output_log)   
     
 def process_301550DRVR():    
@@ -1606,18 +1517,20 @@ def process_301550DRVR():
     global occ_fid2_id
     global unique_cntr
     global fd1
-    
-    
     "301550" 
     writelog(record_id+"--"+"CCCCC:301550DRVR  - BRANCH TO OCC-INFO - PIDINF",output_log)
       
     if pflag == 'L':
+        writelog("CALLING 301550REC",output_log )
         process_301550REC()
     elif pflag == ' ':
+        writelog("CALLING 301550BAN",output_log )
         process_301550BAN()
     elif pflag == 'S':
+        writelog("CALLING 301550SO",output_log )
         process_301550SO()
     elif pflag =='C':
+        writelog("CALLING 301550CKT",output_log )
         process_301550CKT()
     
     writelog(record_id+"--"+"leaving process_301550DRVR",output_log) 
@@ -1628,9 +1541,7 @@ def process_301550REC():
     global occ_fid2_id
     global occ_pidinf_id
     writelog(record_id+"--"+"CCCCCCCCCC:301550REC  OCC_PIDINF",output_log)
-#-*   THIS LOOKS AT THE 10301550 RECORD FOR THE OCC INFO
-#-*   THIS CASE LOOKS FOR PHRASE CODE FIELDS AND AMT W/TYPE.
-#-*******************************************************
+  
 #FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13
 #        [30:61] [61:64]      [64:90]       [90:95]
 #FIXFORM X31     PHRASE_CD/A3 D_PLAN_ID/A26 D_DIS_PERCNT/Z5.2
@@ -1641,15 +1552,6 @@ def process_301550REC():
 #        [109:110]               [110:122]     [122:225]
 #FIXFORM D_PRICE_PLAN_TYP_IND/A1 SO_NUMBER/A12 X103
     
-    
-
-    initialize_tbl('OCC_OCC_INFO_tbl')
-    OCC_OCC_INFO_tbl['OCC_FID2_ID']=occ_fid2_id
-    OCC_OCC_INFO_tbl['PHRASE_CD']=line[61:64]
-    OCC_OCC_INFO_tbl['OCCFROMDTCC']=line[70:78]
-    OCC_OCC_INFO_tbl['OCCTHRUDTCC']=line[78:86]
-    
-    
     #dont check if exists... we need and OCC_INFO record for each record in the ip file.
     #dont check if exists... we need and OCC_INFO record for each record in the ip file.
     #dont check if exists... we need and OCC_INFO record for each record in the ip file.
@@ -1658,18 +1560,8 @@ def process_301550REC():
         initialize_tbl('OCC_OCC_INFO_tbl')
         OCC_OCC_INFO_tbl['OCC_FID2_ID']=occ_fid2_id
         OCC_OCC_INFO_tbl['PHRASE_CD']=line[61:64]
-        OCC_OCC_INFO_tbl['OCCFROMDTCC']=line[70:78]
-        OCC_OCC_INFO_tbl['OCCTHRUDTCC']=line[78:86]
+
         occ_info_id=process_insert_table("CAIMS_OCC_OCC_INFO", OCC_OCC_INFO_tbl,OCC_OCC_INFO_DEFN_DICT,con,schema,"SQ_OCC_OCC_INFO",output_log)
-#        tmpTblRec={}
-#        tmpTblRec['OCC_FID2_ID']=OCC_OCC_INFO_tbl['OCC_FID2_ID']
-#        tmpTblRec['PHRASE_CD']=OCC_OCC_INFO_tbl['PHRASE_CD']         
-#        tmpId=process_check_exists("CAIMS_OCC_OCC_INFO", tmpTblRec, OCC_OCC_INFO_DEFN_DICT,con,schema,output_log)
-#        del tmpTblRec
-#        if tmpId > 0:
-#            occ_info_id=tmpId
-#        else:
-#            occ_info_id=process_insert_table("CAIMS_OCC_OCC_INFO", OCC_OCC_INFO_tbl,OCC_OCC_INFO_DEFN_DICT,con,schema,"SQ_OCC_OCC_INFO",output_log)        
     else:
         writelog("ERROR: NO FID2 record.  Can insert OCC_INFO",output_log)
 
@@ -1689,8 +1581,6 @@ def process_301550REC():
         occ_pidinf_id=process_insert_table("CAIMS_OCC_PIDINF", OCC_PIDINF_tbl,OCC_PIDINF_DEFN_DICT,con,schema,"SQ_OCC_PIDINF",output_log)
     else:
         writelog("ERROR:No Parent record. Skipping OCC_PIDINF insert. ", output_log)
-        
-#    writelog(str(record_id)+"PIDINF",output_log)  
 
 #    MATCH PHRASE_CD  OCC_INFO
 #         ON NOMATCH INCLUDE
@@ -1709,11 +1599,7 @@ def process_301550BAN():
     global occ_fid1_id
     global occ_fid2_id
     global fd1
-    
     writelog(record_id+"--"+"CCCCCCCCCC:301550BAN PIDINF",output_log)
-#-*     THIS CASE LOADS BAN LEVEL CHARGES.
-#-*     THOSE 10301550 RECORDS THAT DON'T HAVE   103005, OR 103010 RECORDS   
-#-* **************************************************************
 #FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13
 ##       [30:61] [61:64]      [64:90]       [90:95]
 #FIXFORM X31     PHRASE_CD/A3 D_PLAN_ID/A26 D_DIS_PERCNT/Z5.2
@@ -1723,8 +1609,6 @@ def process_301550BAN():
 #FIXFORM D_DIS_INTERVAL_IND/A1 D_DISC_APPL_IND/A1
 ##        [109:110]               [110:122]     [122:225]
 #FIXFORM D_PRICE_PLAN_TYP_IND/A1 SO_NUMBER/A12 X103
-#
-#
      
     initialize_tbl('OCC_OCC_HDR_tbl')
     OCC_OCC_HDR_tbl['BCTFOCC_ID']=bctfocc_id
@@ -1736,8 +1620,6 @@ def process_301550BAN():
     OCC_OCC_HDR_tbl['SO_NRC']=0
     OCC_OCC_HDR_tbl['SO_BLD']=0
     OCC_OCC_HDR_tbl['INPUT_RECORDS']=str(record_id)
-    
-    
 
     if bctfocc_id > 0:
         tmpTblRec={}
@@ -1747,107 +1629,94 @@ def process_301550BAN():
         fd1='nl'
         hdr=process_check_exists("CAIMS_OCC_OCC_HDR", tmpTblRec, OCC_OCC_HDR_DEFN_DICT,con,schema,output_log)
         del tmpTblRec 
-        if hdr>0:
+        if hdr>0: 
+            writelog("bypassed in process_301550BAN",output_log)
             occ_hdr_id=hdr
         else:
+            writelog("created in process_301550BAN",output_log)
             occ_hdr_id=process_insert_table("CAIMS_OCC_OCC_HDR", OCC_OCC_HDR_tbl,OCC_OCC_HDR_DEFN_DICT,con,schema,"SQ_OCC_OCC_HDR",output_log)
         del hdr    
     else:
-        writelog("ERROR?: no insert to occ hdr. due to no root record",output_log)
-       
-       
-    initialize_tbl('OCC_OCC_FID1_tbl') 
-    OCC_OCC_FID1_tbl['OCC_HDR_ID']=occ_hdr_id                      
-    OCC_OCC_FID1_tbl['CD_FID1']='nl' 
-    OCC_OCC_FID1_tbl['FD1']=fd1
-    OCC_OCC_FID1_tbl['INPUT_RECORDS']=str(record_id)
-    
+        writelog("ERROR?: no insert to occ hdr. due to no root record",output_log)  
 
     if occ_hdr_id > 0:
         tmpTblRec={}
         tmpTblRec['OCC_HDR_ID']=occ_hdr_id
         tmpTblRec['CD_FID1']='nl'
+        tmpTblRec['UNIQUE_CNTR']=unique_cntr
         tmpTblRec['FD1']=fd1
         tmpid=process_check_exists("CAIMS_OCC_OCC_FID1", tmpTblRec, OCC_OCC_FID1_DEFN_DICT,con,schema,output_log)        
         del tmpTblRec
         if tmpid>0:
+            writelog("BYPASSING create of FID1",output_log)
             occ_fid1_id = tmpid
         else:
+            initialize_tbl('OCC_OCC_FID1_tbl') 
+            OCC_OCC_FID1_tbl['OCC_HDR_ID']=occ_hdr_id                      
+            OCC_OCC_FID1_tbl['CD_FID1']='nl' 
+            OCC_OCC_FID1_tbl['UNIQUE_CNTR']=unique_cntr
+            OCC_OCC_FID1_tbl['FD1']=fd1
+            OCC_OCC_FID1_tbl['INPUT_RECORDS']=str(record_id)
             occ_fid1_id=process_insert_table("CAIMS_OCC_OCC_FID1", OCC_OCC_FID1_tbl,OCC_OCC_FID1_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID1",output_log)
     else:
         writelog("ERROR:insert to occfid1 skipped since there was no occ_hdr record", output_log)
         
-    
-
-
-    initialize_tbl('OCC_OCC_FID2_tbl')
-    OCC_OCC_FID2_tbl['OCC_FID1_ID']=occ_fid1_id
-    OCC_OCC_FID2_tbl['CD_FID2']='nl' 
-    OCC_OCC_FID2_tbl['INPUT_RECORDS']=str(record_id)
-    
-
-    
     if occ_fid1_id >0:  
         tmpTblRec={}
         tmpTblRec['OCC_FID1_ID']=occ_fid1_id
+        tmpTblRec['UNIQUE_CNTR']=unique_cntr
         tmpTblRec['CD_FID2']='nl'        
         fid2=process_check_exists("CAIMS_OCC_OCC_FID2", tmpTblRec, OCC_OCC_FID2_DEFN_DICT,con,schema,output_log)   
         del tmpTblRec
         if fid2>0:
             occ_fid2_id=fid2
         else:
+            initialize_tbl('OCC_OCC_FID2_tbl')
+            OCC_OCC_FID2_tbl['OCC_FID1_ID']=occ_fid1_id
+            OCC_OCC_FID2_tbl['CD_FID2']='nl' 
+            OCC_OCC_FID2_tbl['UNIQUE_CNTR']=unique_cntr
+            OCC_OCC_FID2_tbl['INPUT_RECORDS']=str(record_id)    
             occ_fid2_id=process_insert_table("CAIMS_OCC_OCC_FID2", OCC_OCC_FID2_tbl,OCC_OCC_FID2_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID2",output_log)  
     else:
         writelog("ERROR:NO fid2 insert due to no fid1 record", output_log)
    
-    
- 
-    if occ_fid2_id > 0:
-        initialize_tbl('OCC_OCC_INFO_tbl')
-        OCC_OCC_INFO_tbl['OCC_FID2_ID']=occ_fid2_id
-        OCC_OCC_INFO_tbl['PHRASE_CD']=line[61:64]
-        OCC_OCC_INFO_tbl['INPUT_RECORDS']=str(record_id)
-        occ_info_id=process_insert_table("CAIMS_OCC_OCC_INFO", OCC_OCC_INFO_tbl,OCC_OCC_INFO_DEFN_DICT,con,schema,"SQ_OCC_OCC_INFO",output_log) 
-        
-        #dont check if OCC_INFO record exists.  we need a record for each occ_info record in the ip file
-#        tmpTblRec={}
-#        tmpTblRec['OCC_FID2_ID']=occ_fid2_id
-#        tmpTblRec['PHRASE_CD']=line[61:64]        
-#        tmpinf=process_check_exists("CAIMS_OCC_OCC_INFO", tmpTblRec, OCC_OCC_INFO_DEFN_DICT,con,schema,output_log)
-#        del tmpTblRec
-#        if tmpinf>0:
-#            occ_info_id=tmpinf
-#        else:
-#            initialize_tbl('OCC_OCC_INFO_tbl')
-#            OCC_OCC_INFO_tbl['OCC_FID2_ID']=occ_fid2_id
-#            OCC_OCC_INFO_tbl['PHRASE_CD']=line[61:64]
-#            OCC_OCC_INFO_tbl['INPUT_RECORDS']=str(record_id)
-#            occ_info_id=process_insert_table("CAIMS_OCC_OCC_INFO", OCC_OCC_INFO_tbl,OCC_OCC_INFO_DEFN_DICT,con,schema,"SQ_OCC_OCC_INFO",output_log) 
+    tmpTblRec={}
+    tmpTblRec['OCC_FID2_ID']=occ_fid2_id
+    tmpTblRec['PHRASE_CD']=line[61:64]        
+    inf=process_check_exists("CAIMS_OCC_OCC_INFO", tmpTblRec, OCC_OCC_INFO_DEFN_DICT,con,schema,output_log)     
+    if inf>0:
+        occ_info_id=inf
     else:
-        writelog("ERROR: Cant insert OCC_INFO.   No parent FID2 record records", output_log) 
+        writelog("ERROR: OCCINFO not found?", output_log) 
+    del tmpTblRec, inf
+    
+#    if occ_fid2_id > 0:
+#        initialize_tbl('OCC_OCC_INFO_tbl')
+#        OCC_OCC_INFO_tbl['OCC_FID2_ID']=occ_fid2_id
+#        OCC_OCC_INFO_tbl['PHRASE_CD']=line[61:64]
+#        OCC_OCC_INFO_tbl['INPUT_RECORDS']=str(record_id)
+#        occ_info_id=process_insert_table("CAIMS_OCC_OCC_INFO", OCC_OCC_INFO_tbl,OCC_OCC_INFO_DEFN_DICT,con,schema,"SQ_OCC_OCC_INFO",output_log) 
+#        #dont check if OCC_INFO record exists.  we need a record for each occ_info record in the ip file
+#    else:
+#        writelog("ERROR: Cant insert OCC_INFO.   No parent FID2 record records", output_log) 
 
-
- 
-    
-    initialize_tbl('OCC_PIDINF_tbl')
-    OCC_PIDINF_tbl['OCC_INFO_ID']=occ_info_id
-    OCC_PIDINF_tbl['D_PLAN_ID']=line[64:90]
-    OCC_PIDINF_tbl['D_DIS_PERCNT']=convertnumber(line[90:95],2)
-    OCC_PIDINF_tbl['D_DIS_PLAN_TOT_RVNUE']=convertnumber(line[95:106],2)
-    OCC_PIDINF_tbl['D_VOL_PLN_TYP_IND']=line[106:107] 
-    OCC_PIDINF_tbl['D_DIS_INTERVAL_IND']=line[107:108]
-    OCC_PIDINF_tbl['D_DISC_APPL_IND']=line[108:109]
-    OCC_PIDINF_tbl['D_PRICE_PLAN_TYP_IND']=line[109:110]
-    OCC_PIDINF_tbl['SO_NUMBER']=line[110:122] 
-    OCC_PIDINF_tbl['INPUT_RECORDS']=str(record_id)  
-    
-    
     if occ_info_id >0:
+        initialize_tbl('OCC_PIDINF_tbl')
+        OCC_PIDINF_tbl['OCC_INFO_ID']=occ_info_id
+        OCC_PIDINF_tbl['D_PLAN_ID']=line[64:90]
+        OCC_PIDINF_tbl['D_DIS_PERCNT']=convertnumber(line[90:95],2)
+        OCC_PIDINF_tbl['D_DIS_PLAN_TOT_RVNUE']=convertnumber(line[95:106],2)
+        OCC_PIDINF_tbl['D_VOL_PLN_TYP_IND']=line[106:107] 
+        OCC_PIDINF_tbl['D_DIS_INTERVAL_IND']=line[107:108]
+        OCC_PIDINF_tbl['D_DISC_APPL_IND']=line[108:109]
+        OCC_PIDINF_tbl['D_PRICE_PLAN_TYP_IND']=line[109:110]
+        OCC_PIDINF_tbl['SO_NUMBER']=line[110:122] 
+        OCC_PIDINF_tbl['INPUT_RECORDS']=str(record_id)          
         occ_pidinf_id=process_insert_table("CAIMS_OCC_PIDINF", OCC_PIDINF_tbl,OCC_PIDINF_DEFN_DICT,con,schema,"SQ_OCC_PIDINF",output_log)
         
     else:
         writelog("ERROR: cant write pidinf.  No FID2 PARENT RECORD",output_log)
-#TYPE "*** CASE 301550BANCHRG PFLAG = <PFLAG "
+
 #    MATCH EOB_DATE ACNA BAN  ROOTREC
 #     ON NOMATCH TYPE "CASE 301550BAN - NOMATCH DATE ACNA BAN - REJECT"
 #      ON NOMATCH REJECT
@@ -1886,7 +1755,6 @@ def process_301550BAN():
 #    MATCH D_PLAN_ID   PIDINF
 #         ON NOMATCH INCLUDE
 #         ON MATCH INCLUDE
-# 
     writelog(record_id+"--"+"leaving process_301550BAN",output_log)
 
 def process_301550SO():
@@ -1903,7 +1771,7 @@ def process_301550SO():
     global fd1
     global sodatecc
     global so_id
-    writelog(record_id+"--"+"CCCCCCCCCC:301550BAN PIDINF",output_log)
+    writelog(record_id+"--"+"CCCCCCCCCC:301550SO PIDINF",output_log)
 #-* **************************************************************
 #-*   CASS RECORD ID = ND03
 #-*     THIS CASE LOADS SERVICE ORDER LEVEL CHARGES THAT DON'T HAVE A
@@ -1917,19 +1785,14 @@ def process_301550SO():
 #        [107:108]             [108:109]
 #FIXFORM D_DIS_INTERVAL_IND/A1 D_DISC_APPL_IND/A1
 #        [109:110]               [110:122]     [122:225]
-#FIXFORM D_PRICE_PLAN_TYP_IND/A1 SO_NUMBER/A12 X103
- 
-  
-     
-    if bctfocc_id > 0:
-        
+#FIXFORM D_PRICE_PLAN_TYP_IND/A1 SO_NUMBER/A12 X103    
 #        set  SODATECC=SODATECC;
 #                 SO_ID=so_id;
 #           UNIQUE_CNTR=UNIQUE_CNTR;
 #                 FD1=fd1;
+    if bctfocc_id > 0:    
          cd_fid1='nl'
          cd_fid2='nl'
-    
          fd1='nl'
             
          tmpTblRec={}
@@ -1940,9 +1803,11 @@ def process_301550SO():
          hdr=process_check_exists("CAIMS_OCC_OCC_HDR", tmpTblRec, OCC_OCC_HDR_DEFN_DICT,con,schema,output_log)
          del tmpTblRec
          if hdr>0:
+             writelog("bypassed in process_301550SO",output_log)
              occ_hdr_id=hdr
              del hdr
          else:
+             writelog("created in process_301550SO",output_log)
              initialize_tbl('OCC_OCC_HDR_tbl')
              OCC_OCC_HDR_tbl['BCTFOCC_ID']=bctfocc_id
              OCC_OCC_HDR_tbl['SO_ID']=so_id
@@ -1954,6 +1819,7 @@ def process_301550SO():
             tmpTblRec={}
             tmpTblRec['OCC_HDR_ID']=occ_hdr_id
             tmpTblRec['CD_FID1']=cd_fid1
+            tmpTblRec['UNIQUE_CNTR']=unique_cntr
             tmpid=process_check_exists("CAIMS_OCC_OCC_FID1", tmpTblRec, OCC_OCC_FID1_DEFN_DICT,con,schema,output_log)  
             del tmpTblRec
             if tmpid>0:
@@ -1962,17 +1828,18 @@ def process_301550SO():
                 initialize_tbl('OCC_OCC_FID1_tbl') 
                 OCC_OCC_FID1_tbl['OCC_HDR_ID']=occ_hdr_id                      
                 OCC_OCC_FID1_tbl['CD_FID1']=cd_fid1 
+                OCC_OCC_FID1_tbl['UNIQUE_CNTR']=unique_cntr
                 OCC_OCC_FID1_tbl['FD1']=fd1
                 OCC_OCC_FID1_tbl['INPUT_RECORDS']=str(record_id)
                 occ_fid1_id=process_insert_table("CAIMS_OCC_OCC_FID1", OCC_OCC_FID1_tbl,OCC_OCC_FID1_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID1",output_log)
          else:
             writelog("ERROR:insert to occfid1 skipped since there was no occ_hdr record", output_log)
             
-
          if occ_fid1_id >0:  
             tmpTblRec={}
             tmpTblRec['OCC_FID1_ID']=occ_fid1_id
             tmpTblRec['CD_FID2']=cd_fid2
+            tmpTblRec['UNIQUE_CNTR']=unique_cntr
             tmpid=process_check_exists("CAIMS_OCC_OCC_FID2", tmpTblRec, OCC_OCC_FID2_DEFN_DICT,con,schema,output_log)  
             del tmpTblRec
             if tmpid >0:
@@ -1981,35 +1848,43 @@ def process_301550SO():
                 initialize_tbl('OCC_OCC_FID2_tbl')
                 OCC_OCC_FID2_tbl['OCC_FID1_ID']=occ_fid1_id
                 OCC_OCC_FID2_tbl['CD_FID2']=cd_fid2
+                OCC_OCC_FID2_tbl['UNIQUE_CNTR']=unique_cntr
                 OCC_OCC_FID2_tbl['INPUT_RECORDS']=str(record_id)
                 occ_fid2_id=process_insert_table("CAIMS_OCC_OCC_FID2", OCC_OCC_FID2_tbl,OCC_OCC_FID2_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID2",output_log)
          else:
                 writelog("ERROR: fid2 insert skipped due to no fid1 record", output_log) 
-         
- 
-         if occ_fid2_id > 0:
-            initialize_tbl('OCC_OCC_INFO_tbl')
-            OCC_OCC_INFO_tbl['OCC_FID2_ID']=occ_fid2_id
-            OCC_OCC_INFO_tbl['PHRASE_CD']=line[61:64]
-            OCC_OCC_INFO_tbl['OCCFROMDTCC']=line[70:78]
-            OCC_OCC_INFO_tbl['OCCTHRUDTCC']=line[78:86]
-            OCC_OCC_INFO_tbl['FAC_CHG_TYPE']=line[86:87]
-            OCC_OCC_INFO_tbl['RATEZONEIR']=line[87:88]
-            OCC_OCC_INFO_tbl['RATEZONEIA']=line[88:89]
-            OCC_OCC_INFO_tbl['SUP_AMT_IR']=convertnumber(line[89:100],2)
-            OCC_OCC_INFO_tbl['SUP_AMT_IA']=convertnumber(line[100:111],2)  
-            OCC_OCC_INFO_tbl['SUP_AMT_IRIA']=convertnumber(line[111:122],2)
-            OCC_OCC_INFO_tbl['SUP_AMT_IAIA']=convertnumber(line[122:133],2)
-            OCC_OCC_INFO_tbl['SUP_AMT_NONJ']=convertnumber(line[133:144],2)
-            OCC_OCC_INFO_tbl['PCT_ORIG_USG']=convertnumber(line[188:191],0)
-            OCC_OCC_INFO_tbl['PIU_INFO']=convertnumber(line[218:221],0)
-            OCC_OCC_INFO_tbl['RC_NRC_IND']=line[222:223]
-            OCC_OCC_INFO_tbl['ACC_TYPE']=line[224:225]
-            OCC_OCC_INFO_tbl['INPUT_RECORDS']=str(record_id)
-            occ_info_id=process_insert_table("CAIMS_OCC_OCC_INFO", OCC_OCC_INFO_tbl,OCC_OCC_INFO_DEFN_DICT,con,schema,"SQ_OCC_OCC_INFO",output_log)
-         else:
-            writelog("ERROR: no insert to OCC INFO. no parent occ_fid2 record",output_log)
 
+         tmpTblRec={}
+         tmpTblRec['OCC_FID2_ID']=occ_fid2_id
+         tmpTblRec['PHRASE_CD']=line[61:64]        
+         inf=process_check_exists("CAIMS_OCC_OCC_INFO", tmpTblRec, OCC_OCC_INFO_DEFN_DICT,con,schema,output_log)     
+         if inf>0:
+             occ_info_id=inf
+         else:
+             writelog("ERROR: OCCINFO not found?", output_log) 
+         del tmpTblRec, inf
+#         if occ_fid2_id > 0:
+#            initialize_tbl('OCC_OCC_INFO_tbl')
+#            OCC_OCC_INFO_tbl['OCC_FID2_ID']=occ_fid2_id
+#            OCC_OCC_INFO_tbl['PHRASE_CD']=line[61:64]
+#            OCC_OCC_INFO_tbl['OCCFROMDTCC']=line[70:78]
+#            OCC_OCC_INFO_tbl['OCCTHRUDTCC']=line[78:86]
+#            OCC_OCC_INFO_tbl['FAC_CHG_TYPE']=line[86:87]
+#            OCC_OCC_INFO_tbl['RATEZONEIR']=line[87:88]
+#            OCC_OCC_INFO_tbl['RATEZONEIA']=line[88:89]
+#            OCC_OCC_INFO_tbl['SUP_AMT_IR']=convertnumber(line[89:100],2)
+#            OCC_OCC_INFO_tbl['SUP_AMT_IA']=convertnumber(line[100:111],2)  
+#            OCC_OCC_INFO_tbl['SUP_AMT_IRIA']=convertnumber(line[111:122],2)
+#            OCC_OCC_INFO_tbl['SUP_AMT_IAIA']=convertnumber(line[122:133],2)
+#            OCC_OCC_INFO_tbl['SUP_AMT_NONJ']=convertnumber(line[133:144],2)
+#            OCC_OCC_INFO_tbl['PCT_ORIG_USG']=convertnumber(line[188:191],0)
+#            OCC_OCC_INFO_tbl['PIU_INFO']=convertnumber(line[218:221],0)
+#            OCC_OCC_INFO_tbl['RC_NRC_IND']=line[222:223]
+#            OCC_OCC_INFO_tbl['ACC_TYPE']=line[224:225]
+#            OCC_OCC_INFO_tbl['INPUT_RECORDS']=str(record_id)
+#            occ_info_id=process_insert_table("CAIMS_OCC_OCC_INFO", OCC_OCC_INFO_tbl,OCC_OCC_INFO_DEFN_DICT,con,schema,"SQ_OCC_OCC_INFO",output_log)
+#         else:
+#            writelog("ERROR: no insert to OCC INFO. no parent occ_fid2 record",output_log)
 
          if occ_info_id > 0:
              initialize_tbl('OCC_PIDINF_tbl')
@@ -2034,9 +1909,6 @@ def process_301550SO():
              del tmpTblRec
          else:
              writelog("no inserting occ_pidinf.  no parent occ_info record", output_log)
-
-    
-
 #TYPE "*** CASE 301550SOCHRG  PFLAG = <PFLAG"
 #    MATCH EOB_DATE ACNA BAN   ROOTREC
 #    ON NOMATCH TYPE "CASE 301550SO  - NOMATCH DATE ACNA BAN - REJECT"
@@ -2074,9 +1946,6 @@ def process_301550SO():
     writelog(record_id+"--"+"leaving process_301550SO",output_log)
     
     
-    
-    
-
 def process_301550CKT():
     global bctfocc_id
     global occ_hdr_id    
@@ -2091,7 +1960,6 @@ def process_301550CKT():
     global fd1
     global sodatecc
     global so_id
-
     writelog(record_id+"--"+"CCCCCCCCCC:301550CKT  PIDINF",output_log)
 #-* **************************************************************
 #-*   CASS RECORD ID = ND03
@@ -2107,9 +1975,7 @@ def process_301550CKT():
 #FIXFORM D_DIS_INTERVAL_IND/A1 D_DISC_APPL_IND/A1
 #        [109:110]               [110:122]     [122:225]
 #FIXFORM D_PRICE_PLAN_TYP_IND/A1 SO_NUMBER/A12 X103
-     
-     
-    if bctfocc_id > 0:
+
         
 #           SODATECC=SODATECC;
 #                 SO_ID=SO_ID;
@@ -2118,11 +1984,10 @@ def process_301550CKT():
 #                 CD_FID1=CD_FID1;
 #                 CD_FID2=' ';
 #                 FID_DATA2=' ';
+    if bctfocc_id > 0:        
          cd_fid1='nl'
          cd_fid2='nl'
-    
-        
-            
+       
          tmpTblRec={}
          tmpTblRec['BCTFOCC_ID']=bctfocc_id
          tmpTblRec['SO_ID']=so_id
@@ -2131,10 +1996,12 @@ def process_301550CKT():
          hdr=process_check_exists("CAIMS_OCC_OCC_HDR", tmpTblRec, OCC_OCC_HDR_DEFN_DICT,con,schema,output_log)
          del tmpTblRec
          if hdr>0:
+             writelog("bypassed in process_301550CKT",output_log)
              occ_hdr_id=hdr
              del hdr
          else:
              initialize_tbl('OCC_OCC_HDR_tbl')
+             writelog("created in process_301550CKT",output_log)
              OCC_OCC_HDR_tbl['BCTFOCC_ID']=bctfocc_id
              OCC_OCC_HDR_tbl['SO_ID']=so_id
              OCC_OCC_HDR_tbl['SODATECC']=sodatecc
@@ -2145,6 +2012,7 @@ def process_301550CKT():
             tmpTblRec={}
             tmpTblRec['OCC_HDR_ID']=occ_hdr_id
             tmpTblRec['CD_FID1']=cd_fid1
+            tmpTblRec['UNIQUE_CNTR']=unique_cntr 
             tmpid=process_check_exists("CAIMS_OCC_OCC_FID1", tmpTblRec, OCC_OCC_FID1_DEFN_DICT,con,schema,output_log)  
             del tmpTblRec
             if tmpid>0:
@@ -2153,17 +2021,18 @@ def process_301550CKT():
                 initialize_tbl('OCC_OCC_FID1_tbl') 
                 OCC_OCC_FID1_tbl['OCC_HDR_ID']=occ_hdr_id                      
                 OCC_OCC_FID1_tbl['CD_FID1']=cd_fid1 
+                OCC_OCC_FID1_tbl['UNIQUE_CNTR']=unique_cntr 
                 OCC_OCC_FID1_tbl['FD1']=fd1
                 OCC_OCC_FID1_tbl['INPUT_RECORDS']=str(record_id)
                 occ_fid1_id=process_insert_table("CAIMS_OCC_OCC_FID1", OCC_OCC_FID1_tbl,OCC_OCC_FID1_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID1",output_log)
          else:
             writelog("ERROR:insert to occfid1 skipped since there was no occ_hdr record", output_log)
-            
 
          if occ_fid1_id >0:  
             tmpTblRec={}
             tmpTblRec['OCC_FID1_ID']=occ_fid1_id
             tmpTblRec['CD_FID2']=cd_fid2
+            tmpTblRec['UNIQUE_CNTR']=unique_cntr
             tmpid=process_check_exists("CAIMS_OCC_OCC_FID2", tmpTblRec, OCC_OCC_FID2_DEFN_DICT,con,schema,output_log)  
             del tmpTblRec
             if tmpid >0:
@@ -2172,35 +2041,43 @@ def process_301550CKT():
                 initialize_tbl('OCC_OCC_FID2_tbl')
                 OCC_OCC_FID2_tbl['OCC_FID1_ID']=occ_fid1_id
                 OCC_OCC_FID2_tbl['CD_FID2']=cd_fid2
+                OCC_OCC_FID2_tbl['UNIQUE_CNTR']=unique_cntr 
                 OCC_OCC_FID2_tbl['INPUT_RECORDS']=str(record_id)
                 occ_fid2_id=process_insert_table("CAIMS_OCC_OCC_FID2", OCC_OCC_FID2_tbl,OCC_OCC_FID2_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID2",output_log)
          else:
                 writelog("ERROR: fid2 insert skipped due to no fid1 record", output_log) 
          
- 
-         if occ_fid2_id > 0:
-            initialize_tbl('OCC_OCC_INFO_tbl')
-            OCC_OCC_INFO_tbl['OCC_FID2_ID']=occ_fid2_id
-            OCC_OCC_INFO_tbl['PHRASE_CD']=line[61:64]
-            OCC_OCC_INFO_tbl['OCCFROMDTCC']=line[70:78]
-            OCC_OCC_INFO_tbl['OCCTHRUDTCC']=line[78:86]
-            OCC_OCC_INFO_tbl['FAC_CHG_TYPE']=line[86:87]
-            OCC_OCC_INFO_tbl['RATEZONEIR']=line[87:88]
-            OCC_OCC_INFO_tbl['RATEZONEIA']=line[88:89]
-            OCC_OCC_INFO_tbl['SUP_AMT_IR']=convertnumber(line[89:100],2)
-            OCC_OCC_INFO_tbl['SUP_AMT_IA']=convertnumber(line[100:111],2)  
-            OCC_OCC_INFO_tbl['SUP_AMT_IRIA']=convertnumber(line[111:122],2)
-            OCC_OCC_INFO_tbl['SUP_AMT_IAIA']=convertnumber(line[122:133],2)
-            OCC_OCC_INFO_tbl['SUP_AMT_NONJ']=convertnumber(line[133:144],2)
-            OCC_OCC_INFO_tbl['PCT_ORIG_USG']=convertnumber(line[188:191],0)
-            OCC_OCC_INFO_tbl['PIU_INFO']=convertnumber(line[218:221],0)
-            OCC_OCC_INFO_tbl['RC_NRC_IND']=line[222:223]
-            OCC_OCC_INFO_tbl['ACC_TYPE']=line[224:225]
-            OCC_OCC_INFO_tbl['INPUT_RECORDS']=str(record_id)
-            occ_info_id=process_insert_table("CAIMS_OCC_OCC_INFO", OCC_OCC_INFO_tbl,OCC_OCC_INFO_DEFN_DICT,con,schema,"SQ_OCC_OCC_INFO",output_log)
+         tmpTblRec={}
+         tmpTblRec['OCC_FID2_ID']=occ_fid2_id
+         tmpTblRec['PHRASE_CD']=line[61:64]        
+         inf=process_check_exists("CAIMS_OCC_OCC_INFO", tmpTblRec, OCC_OCC_INFO_DEFN_DICT,con,schema,output_log)     
+         if inf>0:
+             occ_info_id=inf
          else:
-            writelog("ERROR: no insert to OCC INFO. no parent occ_fid2 record",output_log)
-
+             writelog("ERROR: OCCINFO not found?", output_log) 
+         del tmpTblRec, inf
+#         if occ_fid2_id > 0:
+#            initialize_tbl('OCC_OCC_INFO_tbl')
+#            OCC_OCC_INFO_tbl['OCC_FID2_ID']=occ_fid2_id
+#            OCC_OCC_INFO_tbl['PHRASE_CD']=line[61:64]
+#            OCC_OCC_INFO_tbl['OCCFROMDTCC']=line[70:78]
+#            OCC_OCC_INFO_tbl['OCCTHRUDTCC']=line[78:86]
+#            OCC_OCC_INFO_tbl['FAC_CHG_TYPE']=line[86:87]
+#            OCC_OCC_INFO_tbl['RATEZONEIR']=line[87:88]
+#            OCC_OCC_INFO_tbl['RATEZONEIA']=line[88:89]
+#            OCC_OCC_INFO_tbl['SUP_AMT_IR']=convertnumber(line[89:100],2)
+#            OCC_OCC_INFO_tbl['SUP_AMT_IA']=convertnumber(line[100:111],2)  
+#            OCC_OCC_INFO_tbl['SUP_AMT_IRIA']=convertnumber(line[111:122],2)
+#            OCC_OCC_INFO_tbl['SUP_AMT_IAIA']=convertnumber(line[122:133],2)
+#            OCC_OCC_INFO_tbl['SUP_AMT_NONJ']=convertnumber(line[133:144],2)
+#            OCC_OCC_INFO_tbl['PCT_ORIG_USG']=convertnumber(line[188:191],0)
+#            OCC_OCC_INFO_tbl['PIU_INFO']=convertnumber(line[218:221],0)
+#            OCC_OCC_INFO_tbl['RC_NRC_IND']=line[222:223]
+#            OCC_OCC_INFO_tbl['ACC_TYPE']=line[224:225]
+#            OCC_OCC_INFO_tbl['INPUT_RECORDS']=str(record_id)
+#            occ_info_id=process_insert_table("CAIMS_OCC_OCC_INFO", OCC_OCC_INFO_tbl,OCC_OCC_INFO_DEFN_DICT,con,schema,"SQ_OCC_OCC_INFO",output_log)
+#         else:
+#            writelog("ERROR: no insert to OCC INFO. no parent occ_fid2 record",output_log)
 
          if occ_info_id > 0:
              initialize_tbl('OCC_PIDINF_tbl')
@@ -2225,12 +2102,6 @@ def process_301550CKT():
              del tmpTblRec
          else:
              writelog("no inserting occ_pidinf.  no parent occ_info record", output_log)
- 
-     
- 
-     
-     
-#TYPE "*** CASE 301550CKTCHRG  PFLAG = <PFLAG"
 #    MATCH EOB_DATE ACNA BAN  ROOTREC
 #    ON NOMATCH TYPE "CASE 301550CKT - NOMATCH DATE ACNA BAN - REJECT"
 #      ON NOMATCH REJECT
@@ -2261,12 +2132,8 @@ def process_301550CKT():
 #    MATCH D_PLAN_ID   PIDINF
 #         ON NOMATCH INCLUDE
 #         ON MATCH INCLUDE
- 
     writelog(record_id+"--"+"leaving process_301550CKT",output_log)
-     
-     
-     
-     
+      
 def process_3020REC_34():    
     global output_log
     global bctfocc_id
@@ -2299,9 +2166,7 @@ def process_3020REC_34():
 #           [216:217]    [217:218]      [218:219]      [219:220]  
 #   FIXFORM RATE_ZN_IA/1 RATE_ZN_IRIA/1 RATE_ZN_IAIA/1 RATE_ZN_LOC/1
 #           [220:225]
-#   FIXFORM X3 X1 X1  
-      
-      
+#   FIXFORM X3 X1 X1
     if record_id == '302000':
         initialize_tbl('OCC_OCCD_INF_tbl') 
         OCC_OCCD_INF_tbl['OCC_INFO_ID']=occ_info_id
@@ -2348,9 +2213,7 @@ def process_3020REC_34():
 #                occd_inf_id=process_insert_table("CAIMS_OCC_OCCD_INF", OCC_OCCD_INF_tbl,OCC_OCCD_INF_DEFN_DICT,con,schema,"SQ_OCC_OCCD_INF",output_log)
 #            del tmpTblRec
         else:
-            writelog("ERROR:no insert to occd_inf.  no parent occ_info record", output_log)
-#        writelog(str(record_id)+"OCCD_INF",output_log)  
-
+            writelog("ERROR:no insert to occd_inf.  no parent occ_info record", output_log) 
 #TYPE "*** CASE 3020REC  USOC=<USOC>"
 #    MATCH USOC    OCCD_INF
 #          ON NOMATCH INCLUDE
@@ -2359,8 +2222,7 @@ def process_3020REC_34():
 
 def initialize_tbl(tbl):
     global current_abbd_rec_key
- 
-             
+      
     if  tbl == 'OCC_BCTFOCC_tbl':
         OCC_BCTFOCC_tbl['ACNA']=current_abbd_rec_key['ACNA']    
         OCC_BCTFOCC_tbl['EOB_DATE']=current_abbd_rec_key['EOB_DATE']
@@ -2393,7 +2255,6 @@ def initialize_tbl(tbl):
 
  
 def count_record(currec,unknownRec):
-    #debug("****** procedure==>  "+whereami()+" ******")  
     global record_counts
     global unknown_record_counts
 
@@ -2410,7 +2271,6 @@ def count_record(currec,unknownRec):
 
    
 def process_write_program_stats():
-    #debug("****** procedure==>  "+whereami()+" ******")
     global record_counts, unknown_record_counts, OCC_KEY_cnt
     global output_log
     writelog("\n",output_log)
@@ -2465,8 +2325,6 @@ def process_close_files():
         
     occ_input.close();
     output_log.close()
-   
-    
     
 def endProg(msg):
     global output_log
@@ -2475,23 +2333,20 @@ def endProg(msg):
     con.close()
     
     process_write_program_stats()
-     
     endTM=datetime.datetime.now()
+    
+    writelog("\nStart time: %s" % (startTM),output_log)   
+    writelog("  End time: %s" % (endTM),output_log)  
     print "\nTotal run time:  %s" % (endTM-startTM)
     writelog("\nTotal run time:  %s" % (endTM-startTM),output_log)
      
-
     writelog("\n"+msg,output_log)
      
     process_close_files()
-
 "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
 "BEGIN Program logic"
 "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-
-
 print "Starting Program"
 init()
 main()
 endProg("-END OF PROGRAM-")
-
