@@ -163,7 +163,14 @@ def main():
     global fd1
     global cd_fid1
     global cd_fid2
+    global fid_data1
     global fid_data2
+    global piu
+    global piu_src_ind
+    global plu
+    global pvu_src_ind
+    global pct_voip_usg
+    global pct_orig_usage 
     global bctfocc_id
     global occ_fid1_id
     global occ_fid2_id
@@ -263,17 +270,17 @@ def main():
             
             if badKey:
                 count_record("BAD_ABD_KEY",True)
-                writelog("WARNING/ERROR: BAD INPUT DATA.   ACNA="+current_abbd_rec_key['ACNA']+", BAN="+current_abbd_rec_key['BAN']+", EOB_DATE="+current_abbd_rec_key['EOB_DATE'],output_log)   
+                writelog("WARNING: BAD INPUT DATA.   ACNA="+current_abbd_rec_key['ACNA']+", BAN="+current_abbd_rec_key['BAN']+", EOB_DATE="+current_abbd_rec_key['EOB_DATE'],output_log)   
             else:
                 if blankACNA:
                     writelog("WARNING: Inserting data with blank ACNA.   ACNA="+current_abbd_rec_key['ACNA']+", BAN="+current_abbd_rec_key['BAN']+", EOB_DATE="+current_abbd_rec_key['EOB_DATE'],output_log)
                 if badCharsInACNA:
-                    writelog("WARNING/ERROR: Invalid chars found in ACNA.  Will write data with blank ACNA.   ACNA="+current_abbd_rec_key['ACNA']+", BAN="+current_abbd_rec_key['BAN']+", EOB_DATE="+current_abbd_rec_key['EOB_DATE'],output_log)
+                    writelog("WARNING: Invalid chars found in ACNA.  Will write data with blank ACNA.   ACNA="+current_abbd_rec_key['ACNA']+", BAN="+current_abbd_rec_key['BAN']+", EOB_DATE="+current_abbd_rec_key['EOB_DATE'],output_log)
                     
                 if current_abbd_rec_key != prev_abbd_rec_key:
                     OCC_KEY_cnt+=1
                     reset_record_flags()
-                    
+
                 process_occ_records()
    
             "set previous key for comparison in next iteration"   
@@ -401,16 +408,15 @@ def process_occ_records():
        process_0101REC_39_ROOT()
     elif record_id == '050500':            
        process_0505REC_ROOT()     
-    elif record_id == '300500':
+    elif record_id == '300500':  
        process_3005REC_OCC_HDR()  
     elif record_id == '302500':
        process_3025REC_OCC_HDR()      #            
-    elif record_id == '301000':
+    elif record_id == '301000':     
        process_3010REC_OCC_FID()           
     elif record_id in ('301500','301501'):           
        process_3015DRVR_50()                    ##BRANCH to OCC-INFO"
     elif record_id == '301550':          ##84 RECS FOUND
-       writelog(" we hit a 301550 record",output_log)
        process_301550DRVR()
     elif record_id in ('302000','302001'):
        process_3020REC_34()
@@ -462,13 +468,23 @@ def reset_record_flags():
     global occd_inf_id
     global pflag
     global unique_cntr
+    global piu_src_ind
+    global plu
+    global pvu_src_ind
+    global pct_voip_usg
+    global pct_orig_usage      
+    
+    
+    
     global sodatecc
     global so_id
     global fd1
     global cd_fid1
     global cd_fid2
+    global fid_data1
     global fid_data2
-    
+    global piu
+        
     bctfocc_id=0
     occ_fid1_id=0
     occ_fid2_id=0
@@ -483,7 +499,16 @@ def reset_record_flags():
     fd1=''
     cd_fid1=''
     cd_fid2=''
+    fid_data1=''
     fid_data2=''
+    piu=' '
+
+    piu_src_ind=''
+    plu=''
+    pvu_src_ind=''
+    pct_voip_usg=0
+    pct_orig_usage='' 
+ 
  
   
 def process_0101REC_39_ROOT():
@@ -664,10 +689,13 @@ def process_3025REC_OCC_HDR():
     OCC_OCC_HDR_tbl['SODATECC']=sodatecc
     OCC_OCC_HDR_tbl['UNIQUE_CNTR']=unique_cntr
     OCC_OCC_HDR_tbl['SO_MONTHLY']=convertnumber(line[166:177],2)
-    OCC_OCC_HDR_tbl['SO_FRAC']=convertnumber(line[177:188],20)
+    OCC_OCC_HDR_tbl['SO_FRAC']=convertnumber(line[177:188],2)
     OCC_OCC_HDR_tbl['SO_NRC']=convertnumber(line[188:199],2)
-    OCC_OCC_HDR_tbl['SO_BLD']=convertnumber(line[199:201],2)
+    OCC_OCC_HDR_tbl['SO_BLD']=convertnumber(line[199:210],2)
     OCC_OCC_HDR_tbl['INPUT_RECORDS']=str(record_id)
+
+
+
 
     if bctfocc_id > 0:        
         tmpTblRec={}
@@ -717,7 +745,17 @@ def process_TYPE3010A():
     global cd_fid1
     global bctfocc_id
     global pflag
+    global fid_data1
+    global piu
     global fd1
+    global piu_src_ind
+    global plu
+    global pvu_src_ind
+    global pct_voip_usg
+    global pct_orig_usage         
+  
+    global unique_cntr
+    
     writelog(record_id+"--"+"AAAAAA:TYPE3010A -FID1",output_log)          
 #called from process_3010REC_OCC_FID():      
 #"301000"
@@ -739,31 +777,56 @@ def process_TYPE3010A():
 #  ON MATCH CONTINUE
 #MATCH CD_FID1   OCC_FID1
 #  ON NOMATCH INCLUDE
-#  ON MATCH INCLUDE                           
+#  ON MATCH INCLUDE          
+    unique_cntr+=1                           
+    #This is not in the FOCUS code but trying to increment the unique_cntr
+    #in order to avoid duplicates                           
 
     pflag='C'  
     fd1=line[76:93]
     cd_fid1=line[71:76]
+    fid_data1=line[76:126]
+    piu=line[126:129]
+    piu_src_ind=line[140:141]
+    plu=line[141:144]
+    pvu_src_ind=line[144:145]
+    pct_voip_usg=convertnumber(line[145:150] ,2)
+    pct_orig_usage=line[189:192]  
+   
+  
                  
     if occ_hdr_id > 0:
+
         initialize_tbl('OCC_OCC_FID1_tbl') 
         OCC_OCC_FID1_tbl['OCC_HDR_ID']=occ_hdr_id                      
         OCC_OCC_FID1_tbl['CD_FID1']=cd_fid1
         #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
         #not part of the original FOCUS logic
-        OCC_OCC_FID1_tbl['UNIQUE_CNTR']=0
+        OCC_OCC_FID1_tbl['UNIQUE_CNTR']=unique_cntr
         OCC_OCC_FID1_tbl['FD1']=line[76:93]
-        OCC_OCC_FID1_tbl['FID_DATA1']=line[76:126] 
-        OCC_OCC_FID1_tbl['PIU']=line[126:129]
+        OCC_OCC_FID1_tbl['FID_DATA1']=fid_data1
+        OCC_OCC_FID1_tbl['PIU']=piu
         OCC_OCC_FID1_tbl['OCL_LOC']=line[129:140] 
-        OCC_OCC_FID1_tbl['PIU_SRC_IND']=line[140:141]  
-        OCC_OCC_FID1_tbl['PLU']=line[141:144]
-        OCC_OCC_FID1_tbl['PVU_SRC_IND']=line[144:145]
-        OCC_OCC_FID1_tbl['PCT_VOIP_USG']=convertnumber(line[145:150] ,2)
-        OCC_OCC_FID1_tbl['PCT_ORIG_USAGE']=line[189:192] 
+        OCC_OCC_FID1_tbl['PIU_SRC_IND']=piu_src_ind  
+        OCC_OCC_FID1_tbl['PLU']=plu
+        OCC_OCC_FID1_tbl['PVU_SRC_IND']=pvu_src_ind
+        OCC_OCC_FID1_tbl['PCT_VOIP_USG']=pct_voip_usg
+        OCC_OCC_FID1_tbl['PCT_ORIG_USAGE']=pct_orig_usage 
         OCC_OCC_FID1_tbl['CKT_SUPI_IND']=line[223:224]
         OCC_OCC_FID1_tbl['INPUT_RECORDS']=str(record_id)
-        occ_fid1_id=process_insert_table("CAIMS_OCC_OCC_FID1", OCC_OCC_FID1_tbl,OCC_OCC_FID1_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID1",output_log)           
+            
+        tmpTblRec={}
+        tmpTblRec['OCC_HDR_ID']=OCC_OCC_FID1_tbl['OCC_HDR_ID']
+        tmpTblRec['CD_FID1']=OCC_OCC_FID1_tbl['CD_FID1'] 
+        tmpTblRec['UNIQUE_CNTR']=OCC_OCC_FID1_tbl['UNIQUE_CNTR']
+        f1=process_check_exists("OCC_OCC_FID1_tbl", tmpTblRec, OCC_OCC_FID1_DEFN_DICT,con,schema,output_log)     
+        if f1>0:    # we want to insert if it exists too...just update the sequence to get around the key
+            unique_cntr+=1
+            OCC_OCC_FID1_tbl['UNIQUE_CNTR']=unique_cntr
+        del tmpTblRec, f1
+        
+        occ_fid1_id=process_insert_table("CAIMS_OCC_OCC_FID1", OCC_OCC_FID1_tbl,OCC_OCC_FID1_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID1",output_log)
+
     else:             
         writelog("ERROR: in process_TYPE3010A.  occ_hdr_id is 0" ,output_log)
      
@@ -773,8 +836,10 @@ def process_TYPE3010A():
 def process_TYPE3010B():
     global pflag
     global bctfocc_id
+    global occ_hdr_id
     global occ_fid1_id
     global occ_fid2_id
+    global fid_data2
     writelog(record_id+"--"+"AAAAAA:TYPE3010B - FID2",output_log) 
     
     pflag='L'
@@ -788,14 +853,16 @@ def process_TYPE3010B():
 #    
 #FIXFORM PCT_VOIP_USG/Z5.2 X39 PCT_ORIG_USAGE/3 X31 CKT_SUPI_IND/A1
 #FIXFORM X1
+   
     cd_fid2=line[71:76] 
+    fid_data2=line[76:126]
     initialize_tbl('OCC_OCC_FID2_tbl')
     OCC_OCC_FID2_tbl['OCC_FID1_ID']=occ_fid1_id
     OCC_OCC_FID2_tbl['CD_FID2']=cd_fid2
     #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
     #not part of the original FOCUS logic
     OCC_OCC_FID2_tbl['UNIQUE_CNTR']=0
-    OCC_OCC_FID2_tbl['FID_DATA2']=line[76:126]
+    OCC_OCC_FID2_tbl['FID_DATA2']=fid_data2
     OCC_OCC_FID2_tbl['INPUT_RECORDS']=str(record_id)
    
     if occ_fid1_id > 0:
@@ -947,9 +1014,17 @@ def process_3015BAN_50():
     global so_id
     global fd1
     global cd_fid1
-
+    global fid_data1
+    global piu
     global pflag
     global unique_cntr
+    global piu_src_ind
+    global plu
+    global pvu_src_ind
+    global pct_voip_usg
+    global pct_orig_usage     
+ 
+    
     "301500"
     "301501"
     writelog(record_id+"--"+"BBBBBB:3015BAN_50",output_log)
@@ -1065,8 +1140,17 @@ def process_3015BAN_50():
                 #not part of the original FOCUS logic
                 OCC_OCC_FID1_tbl['UNIQUE_CNTR']=unique_cntr
                 OCC_OCC_FID1_tbl['FD1']=fd1
+                OCC_OCC_FID1_tbl['FID_DATA1']=fid_data1
+                OCC_OCC_FID1_tbl['PIU']=piu
+       
+                OCC_OCC_FID1_tbl['PIU_SRC_IND']=piu_src_ind  
+                OCC_OCC_FID1_tbl['PLU']=plu
+                OCC_OCC_FID1_tbl['PVU_SRC_IND']=pvu_src_ind
+                OCC_OCC_FID1_tbl['PCT_VOIP_USG']=pct_voip_usg
+                OCC_OCC_FID1_tbl['PCT_ORIG_USAGE']=pct_orig_usage 
                 OCC_OCC_FID1_tbl['INPUT_RECORDS']=str(record_id)
                 occ_fid1_id=process_insert_table("CAIMS_OCC_OCC_FID1", OCC_OCC_FID1_tbl,OCC_OCC_FID1_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID1",output_log)
+                    
         else:
             writelog("ERROR:insert to occ_fid1.  No OCC_HDR record", output_log)    
 
@@ -1163,6 +1247,24 @@ def process_3015SO_50():
     global bctfocc_id
     global sodatecc
     global fd1
+    global cd_fid1
+    global fid_data1
+    global piu
+    global pflag
+    global unique_cntr
+    global piu_src_ind
+    global plu
+    global pvu_src_ind
+    global pct_voip_usg
+    global pct_orig_usage     
+    
+    
+    
+    
+    
+    
+    
+    
     writelog(record_id+"--"+"BBBBBB:3015SO_50",output_log)
 #FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13
 #        [30:61]   [61:64]      [64:70]
@@ -1179,6 +1281,9 @@ def process_3015SO_50():
 #FIXFORM X8        PCT_ORIG_USG/3 X1 X1 X1 X15 X8 X1 PIU_INFO/3
 #        [221:222] [222:223]     [223:224]  [224:225]
 #FIXFORM X1        RC_NRC_IND/A1 X1         ACC_TYPE/1 X6
+
+
+    
     if record_id == '301500':
         initialize_tbl('OCC_OCC_HDR_tbl')
         OCC_OCC_HDR_tbl['BCTFOCC_ID']=bctfocc_id
@@ -1218,8 +1323,15 @@ def process_3015SO_50():
         #not part of the original FOCUS logic
         OCC_OCC_FID1_tbl['UNIQUE_CNTR']=unique_cntr
         OCC_OCC_FID1_tbl['FD1']=fd1
+        OCC_OCC_FID1_tbl['FID_DATA1']=fid_data1
+        OCC_OCC_FID1_tbl['PIU']=piu     
+        OCC_OCC_FID1_tbl['PIU_SRC_IND']=piu_src_ind  
+        OCC_OCC_FID1_tbl['PLU']=plu
+        OCC_OCC_FID1_tbl['PVU_SRC_IND']=pvu_src_ind
+        OCC_OCC_FID1_tbl['PCT_VOIP_USG']=pct_voip_usg
+        OCC_OCC_FID1_tbl['PCT_ORIG_USAGE']=pct_orig_usage 
         OCC_OCC_FID1_tbl['INPUT_RECORDS']=str(record_id)
-        
+    
         if occ_hdr_id > 0:
             occ_fid1_id=process_insert_table("CAIMS_OCC_OCC_FID1", OCC_OCC_FID1_tbl,OCC_OCC_FID1_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID1",output_log)
         else:
@@ -1335,6 +1447,20 @@ def process_3015CKT_50():
     global cd_fid1
     global cd_fid2
     global fid_data2
+    global fid_data1   
+    global fd1
+    global piu
+    global piu_src_ind
+    global plu
+    global pvu_src_ind
+    global pct_voip_usg
+    global pct_orig_usage       
+    
+    
+    
+    
+    
+    
     "301500"
 #    same fixform process_3015BAN_50
     writelog(record_id+"--"+"BBBBBB:3015CKT_50",output_log)
@@ -1401,7 +1527,15 @@ def process_3015CKT_50():
                     OCC_OCC_FID1_tbl['UNIQUE_CNTR']=unique_cntr 
                     OCC_OCC_FID1_tbl['FD1']=fd1
                     OCC_OCC_FID1_tbl['INPUT_RECORDS']=str(record_id)
-                    occ_fid1_id=process_insert_table("CAIMS_OCC_OCC_FID1", OCC_OCC_FID1_tbl,OCC_OCC_FID1_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID1",output_log)
+                    OCC_OCC_FID1_tbl['FID_DATA1']=fid_data1
+                    OCC_OCC_FID1_tbl['PIU']=piu     
+                    OCC_OCC_FID1_tbl['PIU_SRC_IND']=piu_src_ind  
+                    OCC_OCC_FID1_tbl['PLU']=plu
+                    OCC_OCC_FID1_tbl['PVU_SRC_IND']=pvu_src_ind
+                    OCC_OCC_FID1_tbl['PCT_VOIP_USG']=pct_voip_usg
+                    OCC_OCC_FID1_tbl['PCT_ORIG_USAGE']=pct_orig_usage 
+                    occ_fid1_id=process_insert_table("CAIMS_OCC_OCC_FID1", OCC_OCC_FID1_tbl,OCC_OCC_FID1_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID1",output_log)              
+                    
              else:
                 writelog("ERROR:insert to occfid1 skipped since there was no occ_hdr record", output_log)
                 

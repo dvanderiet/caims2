@@ -156,7 +156,7 @@ def init():
     writelog("Input file: "+str(bdt_input),output_log)
     writelog("Log file: "+str(output_log),output_log)
     
-    "Write header record informatio only"
+    "Write header record information only"
     writelog("Header Record Info:",output_log)
     writelog("     Record ID: "+record_id+" YY: "+cycl_yy+", MMDD: "+cycl_mmdd+", TIME: "+str(cycl_time),output_log)
     
@@ -279,12 +279,12 @@ def main():
             
             if badKey:
                 count_record("BAD_ABD_KEY",True)
-                writelog("WARNING/ERROR: BAD INPUT DATA.   ACNA="+current_abbd_rec_key['ACNA']+", BAN="+current_abbd_rec_key['BAN']+", EOB_DATE="+current_abbd_rec_key['EOB_DATE'],output_log)   
+                writelog("WARNING: BAD INPUT DATA.   ACNA="+current_abbd_rec_key['ACNA']+", BAN="+current_abbd_rec_key['BAN']+", EOB_DATE="+current_abbd_rec_key['EOB_DATE'],output_log)   
             else:
                 if blankACNA:
                     writelog("WARNING: Inserting data with blank ACNA.   ACNA="+current_abbd_rec_key['ACNA']+", BAN="+current_abbd_rec_key['BAN']+", EOB_DATE="+current_abbd_rec_key['EOB_DATE'],output_log)
                 if badCharsInACNA:
-                    writelog("WARNING/ERROR: Invalid chars found in ACNA.  Will write data with blank ACNA.   ACNA="+current_abbd_rec_key['ACNA']+", BAN="+current_abbd_rec_key['BAN']+", EOB_DATE="+current_abbd_rec_key['EOB_DATE'],output_log)
+                    writelog("WARNING: Invalid chars found in ACNA.  Will write data with blank ACNA.   ACNA="+current_abbd_rec_key['ACNA']+", BAN="+current_abbd_rec_key['BAN']+", EOB_DATE="+current_abbd_rec_key['EOB_DATE'],output_log)
                     
                 if current_abbd_rec_key != prev_abbd_rec_key:
                     BDT_KEY_cnt+=1
