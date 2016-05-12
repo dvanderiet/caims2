@@ -158,6 +158,7 @@ def main():
     global output_log
     global record_counts, unknown_record_counts
     global unique_cntr
+    global fid_cntr
     global sodate
     global so_id
     global fd1
@@ -468,6 +469,7 @@ def reset_record_flags():
     global occd_inf_id
     global pflag
     global unique_cntr
+    global fid_cntr
     global piu_src_ind
     global plu
     global pvu_src_ind
@@ -494,6 +496,7 @@ def reset_record_flags():
     occ_pidinf_id=0
     pflag=''
     unique_cntr=0
+    fid_cntr=0
     sodatecc='19000101'
     so_id='nl'
     fd1=''
@@ -666,7 +669,8 @@ def process_3005REC_OCC_HDR():
 #    else:
 #        process_ERROR_END("ERROR: Previous record should have been a 051300.")
     writelog(record_id+"--"+"leaving process_3005REC_OCC_HDR",output_log)
- 
+#def process_stop():
+#    return "x"
 def process_3025REC_OCC_HDR():    
     global occ_hdr_id
     global bctfocc_id 
@@ -689,6 +693,8 @@ def process_3025REC_OCC_HDR():
     OCC_OCC_HDR_tbl['SODATECC']=sodatecc
     OCC_OCC_HDR_tbl['UNIQUE_CNTR']=unique_cntr
     OCC_OCC_HDR_tbl['SO_MONTHLY']=convertnumber(line[166:177],2)
+#    if str(OCC_OCC_HDR_tbl['SO_MONTHLY']) == "-665.70" or str(OCC_OCC_HDR_tbl['SO_MONTHLY']) =="-352.09" or str(OCC_OCC_HDR_tbl['SO_MONTHLY'])=="-133.16":
+#        process_stop()
     OCC_OCC_HDR_tbl['SO_FRAC']=convertnumber(line[177:188],2)
     OCC_OCC_HDR_tbl['SO_NRC']=convertnumber(line[188:199],2)
     OCC_OCC_HDR_tbl['SO_BLD']=convertnumber(line[199:210],2)
@@ -702,13 +708,25 @@ def process_3025REC_OCC_HDR():
         tmpTblRec['BCTFOCC_ID']=bctfocc_id
         tmpTblRec['SO_ID']=so_id
         tmpTblRec['SODATECC']=sodatecc
+        tmpTblRec['UNIQUE_CNTR']=unique_cntr        
+#        tmpTblRec['SO_MONTHLY']=0
+#        tmpTblRec['SO_FRAC']=0
+#        tmpTblRec['SO_NRC']=0
+#        tmpTblRec['SO_BLD']=0
+#updating 2 records in some cases.   Try passing 0 values to the tmpTblRec        
+#just for the check_exists        
+
        
         if occ_hdr_id > 0 and process_check_exists("CAIMS_OCC_OCC_HDR", tmpTblRec, OCC_OCC_HDR_DEFN_DICT,con,schema,output_log):
+            writelog("3025REC_OCC_HDR doing an update",output_log)
+#            OCC_OCC_HDR_tbl['UNIQUE_CNTR']=''
+#Here's the culprit.  updating more than one record        condition    
             process_update_table("CAIMS_OCC_OCC_HDR", OCC_OCC_HDR_tbl, OCC_OCC_HDR_DEFN_DICT,con,schema,output_log)
-            writelog("bypassed in process_3025REC_OCC_HDR",output_log)
+#            process_update_table("CAIMS_OCC_OCC_HDR", OCC_OCC_HDR_tbl, OCC_OCC_HDR_DEFN_DICT,con,schema,output_log, \
+#            addlwhere="SO_MONTHLY=0 and SO_FRAC=0 and SO_BLD=0 and SO_NRC=0")
         else:
-            writelog("created in process_3025REC_OCC_HDR",output_log)
             occ_hdr_id=process_insert_table("CAIMS_OCC_OCC_HDR", OCC_OCC_HDR_tbl,OCC_OCC_HDR_DEFN_DICT,con,schema,"SQ_OCC_OCC_HDR",output_log)
+            writelog("3025REC_OCC_HDR doing an INSERT",output_log)
         del tmpTblRec
     else:
         writelog("ERROR?: no insert to occ hdr. due to no root record",output_log)
@@ -754,7 +772,7 @@ def process_TYPE3010A():
     global pct_voip_usg
     global pct_orig_usage         
   
-    global unique_cntr
+    global fid_cntr
     
     writelog(record_id+"--"+"AAAAAA:TYPE3010A -FID1",output_log)          
 #called from process_3010REC_OCC_FID():      
@@ -778,7 +796,7 @@ def process_TYPE3010A():
 #MATCH CD_FID1   OCC_FID1
 #  ON NOMATCH INCLUDE
 #  ON MATCH INCLUDE          
-    unique_cntr+=1                           
+    fid_cntr+=1                           
     #This is not in the FOCUS code but trying to increment the unique_cntr
     #in order to avoid duplicates                           
 
@@ -802,7 +820,7 @@ def process_TYPE3010A():
         OCC_OCC_FID1_tbl['CD_FID1']=cd_fid1
         #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
         #not part of the original FOCUS logic
-        OCC_OCC_FID1_tbl['UNIQUE_CNTR']=unique_cntr
+        OCC_OCC_FID1_tbl['UNIQUE_CNTR']=fid_cntr
         OCC_OCC_FID1_tbl['FD1']=line[76:93]
         OCC_OCC_FID1_tbl['FID_DATA1']=fid_data1
         OCC_OCC_FID1_tbl['PIU']=piu
@@ -821,8 +839,8 @@ def process_TYPE3010A():
         tmpTblRec['UNIQUE_CNTR']=OCC_OCC_FID1_tbl['UNIQUE_CNTR']
         f1=process_check_exists("OCC_OCC_FID1_tbl", tmpTblRec, OCC_OCC_FID1_DEFN_DICT,con,schema,output_log)     
         if f1>0:    # we want to insert if it exists too...just update the sequence to get around the key
-            unique_cntr+=1
-            OCC_OCC_FID1_tbl['UNIQUE_CNTR']=unique_cntr
+            fid_cntr+=1
+            OCC_OCC_FID1_tbl['UNIQUE_CNTR']=fid_cntr
         del tmpTblRec, f1
         
         occ_fid1_id=process_insert_table("CAIMS_OCC_OCC_FID1", OCC_OCC_FID1_tbl,OCC_OCC_FID1_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID1",output_log)
@@ -840,6 +858,7 @@ def process_TYPE3010B():
     global occ_fid1_id
     global occ_fid2_id
     global fid_data2
+    global fid_cntr
     writelog(record_id+"--"+"AAAAAA:TYPE3010B - FID2",output_log) 
     
     pflag='L'
@@ -861,7 +880,7 @@ def process_TYPE3010B():
     OCC_OCC_FID2_tbl['CD_FID2']=cd_fid2
     #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
     #not part of the original FOCUS logic
-    OCC_OCC_FID2_tbl['UNIQUE_CNTR']=0
+    OCC_OCC_FID2_tbl['UNIQUE_CNTR']=fid_cntr
     OCC_OCC_FID2_tbl['FID_DATA2']=fid_data2
     OCC_OCC_FID2_tbl['INPUT_RECORDS']=str(record_id)
    
@@ -869,10 +888,11 @@ def process_TYPE3010B():
        tmpTblRec={}
        tmpTblRec['OCC_FID1_ID']=occ_fid1_id
        tmpTblRec['CD_FID2']=cd_fid2 
-       tmpTblRec['UNIQUE_CNTR']=0
+       tmpTblRec['UNIQUE_CNTR']=fid_cntr
        f2=process_check_exists("CAIMS_OCC_OCC_FID2", tmpTblRec, OCC_OCC_FID2_DEFN_DICT,con,schema,output_log)     
        if f2>0:    # we want to insert if it exists too...just update the sequence to get around the key
-           OCC_OCC_FID2_tbl['UNIQUE_CNTR']+=1
+           fid_cntr+=1
+           OCC_OCC_FID2_tbl['UNIQUE_CNTR']=fid_cntr
        del tmpTblRec, f2
        occ_fid2_id=process_insert_table("CAIMS_OCC_OCC_FID2", OCC_OCC_FID2_tbl,OCC_OCC_FID2_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID2",output_log)
 
@@ -1018,6 +1038,7 @@ def process_3015BAN_50():
     global piu
     global pflag
     global unique_cntr
+    global fid_cntr
     global piu_src_ind
     global plu
     global pvu_src_ind
@@ -1121,13 +1142,14 @@ def process_3015BAN_50():
     #    MATCH CD_FID1  OCC_FID1
     #      ON NOMATCH INCLUDE
     #      ON MATCH CONTINUE
+        fid_cntr+=1
 
         if occ_hdr_id > 0:
             tmpTblRec={}
             tmpTblRec['OCC_HDR_ID']=occ_hdr_id
             tmpTblRec['CD_FID1']=cd_fid1
             tmpTblRec['FD1']=fd1
-            tmpTblRec['UNIQUE_CNTR']=unique_cntr
+            tmpTblRec['UNIQUE_CNTR']=fid_cntr
             tmpid=process_check_exists("CAIMS_OCC_OCC_FID1", tmpTblRec, OCC_OCC_FID1_DEFN_DICT,con,schema,output_log)        
             del tmpTblRec
             if tmpid>0:
@@ -1138,7 +1160,7 @@ def process_3015BAN_50():
                 OCC_OCC_FID1_tbl['CD_FID1']=cd_fid1
                 #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
                 #not part of the original FOCUS logic
-                OCC_OCC_FID1_tbl['UNIQUE_CNTR']=unique_cntr
+                OCC_OCC_FID1_tbl['UNIQUE_CNTR']=fid_cntr
                 OCC_OCC_FID1_tbl['FD1']=fd1
                 OCC_OCC_FID1_tbl['FID_DATA1']=fid_data1
                 OCC_OCC_FID1_tbl['PIU']=piu
@@ -1158,7 +1180,7 @@ def process_3015BAN_50():
             tmpTblRec={}
             tmpTblRec['OCC_FID1_ID']=occ_fid1_id
             tmpTblRec['CD_FID2']=cd_fid2 
-            tmpTblRec['UNIQUE_CNTR']=unique_cntr
+            tmpTblRec['UNIQUE_CNTR']=fid_cntr
             fid2=process_check_exists("CAIMS_OCC_OCC_FID2", tmpTblRec, OCC_OCC_FID2_DEFN_DICT,con,schema,output_log)   
             del tmpTblRec
             if fid2>0:
@@ -1169,7 +1191,7 @@ def process_3015BAN_50():
                 OCC_OCC_FID2_tbl['CD_FID2']=cd_fid2 
                 #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
                 #not part of the original FOCUS logic
-                OCC_OCC_FID2_tbl['UNIQUE_CNTR']=unique_cntr
+                OCC_OCC_FID2_tbl['UNIQUE_CNTR']=fid_cntr
                 OCC_OCC_FID2_tbl['INPUT_RECORDS']=str(record_id)
                 occ_fid2_id=process_insert_table("CAIMS_OCC_OCC_FID2", OCC_OCC_FID2_tbl,OCC_OCC_FID2_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID2",output_log)  
         else:
@@ -1244,6 +1266,7 @@ def process_3015SO_50():
     global occ_fid2_id
     global occ_info_id
     global unique_cntr
+    global fid_cntr
     global bctfocc_id
     global sodatecc
     global fd1
@@ -1315,13 +1338,15 @@ def process_3015SO_50():
                 
         else:
             writelog("ERROR?: no insert to occ hdr. due to no root record",output_log)
-           
+         
+        fid_cntr+=1
+        
         initialize_tbl('OCC_OCC_FID1_tbl') 
         OCC_OCC_FID1_tbl['OCC_HDR_ID']=occ_hdr_id                      
         OCC_OCC_FID1_tbl['CD_FID1']='nl' 
         #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
         #not part of the original FOCUS logic
-        OCC_OCC_FID1_tbl['UNIQUE_CNTR']=unique_cntr
+        OCC_OCC_FID1_tbl['UNIQUE_CNTR']=fid_cntr
         OCC_OCC_FID1_tbl['FD1']=fd1
         OCC_OCC_FID1_tbl['FID_DATA1']=fid_data1
         OCC_OCC_FID1_tbl['PIU']=piu     
@@ -1343,7 +1368,7 @@ def process_3015SO_50():
         OCC_OCC_FID2_tbl['CD_FID2']='nl'
         #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
         #not part of the original FOCUS logic
-        OCC_OCC_FID2_tbl['UNIQUE_CNTR']=unique_cntr
+        OCC_OCC_FID2_tbl['UNIQUE_CNTR']=fid_cntr
         OCC_OCC_FID2_tbl['INPUT_RECORDS']=str(record_id)
 #NEED TO CHECK EXISTS HERE           
         if occ_fid1_id >0:   
@@ -1441,6 +1466,7 @@ def process_3015CKT_50():
     global occ_fid1_id
     global occ_fid2_id
     global unique_cntr
+    global fid_cntr
     global bctfocc_id
     global sodatecc
     global so_id
@@ -1513,7 +1539,7 @@ def process_3015CKT_50():
                 tmpTblRec={}
                 tmpTblRec['OCC_HDR_ID']=occ_hdr_id
                 tmpTblRec['CD_FID1']=cd_fid1
-                tmpTblRec['UNIQUE_CNTR']=unique_cntr 
+                tmpTblRec['UNIQUE_CNTR']=fid_cntr 
                 tmpid=process_check_exists("CAIMS_OCC_OCC_FID1", tmpTblRec, OCC_OCC_FID1_DEFN_DICT,con,schema,output_log)  
                 del tmpTblRec
                 if tmpid>0:
@@ -1524,7 +1550,7 @@ def process_3015CKT_50():
                     OCC_OCC_FID1_tbl['CD_FID1']=cd_fid1 
                     #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
                     #not part of the original FOCUS logic
-                    OCC_OCC_FID1_tbl['UNIQUE_CNTR']=unique_cntr 
+                    OCC_OCC_FID1_tbl['UNIQUE_CNTR']=fid_cntr 
                     OCC_OCC_FID1_tbl['FD1']=fd1
                     OCC_OCC_FID1_tbl['INPUT_RECORDS']=str(record_id)
                     OCC_OCC_FID1_tbl['FID_DATA1']=fid_data1
@@ -1543,7 +1569,7 @@ def process_3015CKT_50():
                 tmpTblRec={}
                 tmpTblRec['OCC_FID1_ID']=occ_fid1_id
                 tmpTblRec['CD_FID2']=cd_fid2
-                tmpTblRec['UNIQUE_CNTR']=unique_cntr
+                tmpTblRec['UNIQUE_CNTR']=fid_cntr
                 tmpid=process_check_exists("CAIMS_OCC_OCC_FID2", tmpTblRec, OCC_OCC_FID2_DEFN_DICT,con,schema,output_log)  
                 del tmpTblRec
                 if tmpid >0:
@@ -1554,7 +1580,7 @@ def process_3015CKT_50():
                     OCC_OCC_FID2_tbl['CD_FID2']=cd_fid2
                     #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
                     #not part of the original FOCUS logic
-                    OCC_OCC_FID2_tbl['UNIQUE_CNTR']=unique_cnt
+                    OCC_OCC_FID2_tbl['UNIQUE_CNTR']=fid_cntr
                     OCC_OCC_FID2_tbl['INPUT_RECORDS']=str(record_id)
                     occ_fid2_id=process_insert_table("CAIMS_OCC_OCC_FID2", OCC_OCC_FID2_tbl,OCC_OCC_FID2_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID2",output_log)
              else:
@@ -1732,6 +1758,7 @@ def process_301550BAN():
     global occ_info_id   
     global occ_pidinf_id
     global unique_cntr
+    global fid_cntr
     global occ_fid1_id
     global occ_fid2_id
     global fd1
@@ -1779,7 +1806,7 @@ def process_301550BAN():
         tmpTblRec={}
         tmpTblRec['OCC_HDR_ID']=occ_hdr_id
         tmpTblRec['CD_FID1']='nl'
-        tmpTblRec['UNIQUE_CNTR']=unique_cntr
+        tmpTblRec['UNIQUE_CNTR']=fid_cntr
         tmpTblRec['FD1']=fd1
         tmpid=process_check_exists("CAIMS_OCC_OCC_FID1", tmpTblRec, OCC_OCC_FID1_DEFN_DICT,con,schema,output_log)        
         del tmpTblRec
@@ -1792,7 +1819,7 @@ def process_301550BAN():
             OCC_OCC_FID1_tbl['CD_FID1']='nl'
             #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
             #not part of the original FOCUS logic
-            OCC_OCC_FID1_tbl['UNIQUE_CNTR']=unique_cntr
+            OCC_OCC_FID1_tbl['UNIQUE_CNTR']=fid_cntr
             OCC_OCC_FID1_tbl['FD1']=fd1
             OCC_OCC_FID1_tbl['INPUT_RECORDS']=str(record_id)
             occ_fid1_id=process_insert_table("CAIMS_OCC_OCC_FID1", OCC_OCC_FID1_tbl,OCC_OCC_FID1_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID1",output_log)
@@ -1802,7 +1829,7 @@ def process_301550BAN():
     if occ_fid1_id >0:  
         tmpTblRec={}
         tmpTblRec['OCC_FID1_ID']=occ_fid1_id
-        tmpTblRec['UNIQUE_CNTR']=unique_cntr
+        tmpTblRec['UNIQUE_CNTR']=fid_cntr
         tmpTblRec['CD_FID2']='nl'        
         fid2=process_check_exists("CAIMS_OCC_OCC_FID2", tmpTblRec, OCC_OCC_FID2_DEFN_DICT,con,schema,output_log)   
         del tmpTblRec
@@ -1814,7 +1841,7 @@ def process_301550BAN():
             OCC_OCC_FID2_tbl['CD_FID2']='nl' 
             #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
             #not part of the original FOCUS logic
-            OCC_OCC_FID2_tbl['UNIQUE_CNTR']=unique_cntr
+            OCC_OCC_FID2_tbl['UNIQUE_CNTR']=fid_cntr
             OCC_OCC_FID2_tbl['INPUT_RECORDS']=str(record_id)    
             occ_fid2_id=process_insert_table("CAIMS_OCC_OCC_FID2", OCC_OCC_FID2_tbl,OCC_OCC_FID2_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID2",output_log)  
     else:
@@ -1894,7 +1921,7 @@ def process_301550SO():
     global occ_fid2_id
     global occ_info_id   
     global occ_pidinf_id
-
+    global fid_cntr
     global unique_cntr
     global cd_fid1
     global cd_fid2
@@ -1949,7 +1976,7 @@ def process_301550SO():
             tmpTblRec={}
             tmpTblRec['OCC_HDR_ID']=occ_hdr_id
             tmpTblRec['CD_FID1']=cd_fid1
-            tmpTblRec['UNIQUE_CNTR']=unique_cntr
+            tmpTblRec['UNIQUE_CNTR']=fid_cntr
             tmpid=process_check_exists("CAIMS_OCC_OCC_FID1", tmpTblRec, OCC_OCC_FID1_DEFN_DICT,con,schema,output_log)  
             del tmpTblRec
             if tmpid>0:
@@ -1960,7 +1987,7 @@ def process_301550SO():
                 OCC_OCC_FID1_tbl['CD_FID1']=cd_fid1 
                 #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
                 #not part of the original FOCUS logic
-                OCC_OCC_FID1_tbl['UNIQUE_CNTR']=unique_cntr
+                OCC_OCC_FID1_tbl['UNIQUE_CNTR']=fid_cntr
                 OCC_OCC_FID1_tbl['FD1']=fd1
                 OCC_OCC_FID1_tbl['INPUT_RECORDS']=str(record_id)
                 occ_fid1_id=process_insert_table("CAIMS_OCC_OCC_FID1", OCC_OCC_FID1_tbl,OCC_OCC_FID1_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID1",output_log)
@@ -1971,7 +1998,7 @@ def process_301550SO():
             tmpTblRec={}
             tmpTblRec['OCC_FID1_ID']=occ_fid1_id
             tmpTblRec['CD_FID2']=cd_fid2
-            tmpTblRec['UNIQUE_CNTR']=unique_cntr
+            tmpTblRec['UNIQUE_CNTR']=fid_cntr
             tmpid=process_check_exists("CAIMS_OCC_OCC_FID2", tmpTblRec, OCC_OCC_FID2_DEFN_DICT,con,schema,output_log)  
             del tmpTblRec
             if tmpid >0:
@@ -1982,7 +2009,7 @@ def process_301550SO():
                 OCC_OCC_FID2_tbl['CD_FID2']=cd_fid2
                 #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
                 #not part of the original FOCUS logic
-                OCC_OCC_FID2_tbl['UNIQUE_CNTR']=unique_cntr
+                OCC_OCC_FID2_tbl['UNIQUE_CNTR']=fid_cntr
                 OCC_OCC_FID2_tbl['INPUT_RECORDS']=str(record_id)
                 occ_fid2_id=process_insert_table("CAIMS_OCC_OCC_FID2", OCC_OCC_FID2_tbl,OCC_OCC_FID2_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID2",output_log)
          else:
@@ -2065,7 +2092,7 @@ def process_301550CKT():
     global occ_fid2_id
     global occ_info_id   
     global occ_pidinf_id
-
+    global fid_cntr
     global unique_cntr
     global cd_fid1
     global cd_fid2
@@ -2124,7 +2151,7 @@ def process_301550CKT():
             tmpTblRec={}
             tmpTblRec['OCC_HDR_ID']=occ_hdr_id
             tmpTblRec['CD_FID1']=cd_fid1
-            tmpTblRec['UNIQUE_CNTR']=unique_cntr 
+            tmpTblRec['UNIQUE_CNTR']=fid_cntr 
             tmpid=process_check_exists("CAIMS_OCC_OCC_FID1", tmpTblRec, OCC_OCC_FID1_DEFN_DICT,con,schema,output_log)  
             del tmpTblRec
             if tmpid>0:
@@ -2135,7 +2162,7 @@ def process_301550CKT():
                 OCC_OCC_FID1_tbl['CD_FID1']=cd_fid1 
                 #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
                 #not part of the original FOCUS logic
-                OCC_OCC_FID1_tbl['UNIQUE_CNTR']=unique_cntr 
+                OCC_OCC_FID1_tbl['UNIQUE_CNTR']=fid_cntr 
                 OCC_OCC_FID1_tbl['FD1']=fd1
                 OCC_OCC_FID1_tbl['INPUT_RECORDS']=str(record_id)
                 occ_fid1_id=process_insert_table("CAIMS_OCC_OCC_FID1", OCC_OCC_FID1_tbl,OCC_OCC_FID1_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID1",output_log)
@@ -2146,7 +2173,7 @@ def process_301550CKT():
             tmpTblRec={}
             tmpTblRec['OCC_FID1_ID']=occ_fid1_id
             tmpTblRec['CD_FID2']=cd_fid2
-            tmpTblRec['UNIQUE_CNTR']=unique_cntr
+            tmpTblRec['UNIQUE_CNTR']=fid_cntr
             tmpid=process_check_exists("CAIMS_OCC_OCC_FID2", tmpTblRec, OCC_OCC_FID2_DEFN_DICT,con,schema,output_log)  
             del tmpTblRec
             if tmpid >0:
@@ -2157,7 +2184,7 @@ def process_301550CKT():
                 OCC_OCC_FID2_tbl['CD_FID2']=cd_fid2
                 #Note UNIQUE_CNTR is used as part of the key for fid1 and fid2 tables
                 #not part of the original FOCUS logic
-                OCC_OCC_FID2_tbl['UNIQUE_CNTR']=unique_cntr 
+                OCC_OCC_FID2_tbl['UNIQUE_CNTR']=fid_cntr 
                 OCC_OCC_FID2_tbl['INPUT_RECORDS']=str(record_id)
                 occ_fid2_id=process_insert_table("CAIMS_OCC_OCC_FID2", OCC_OCC_FID2_tbl,OCC_OCC_FID2_DEFN_DICT,con,schema,"SQ_OCC_OCC_FID2",output_log)
          else:

@@ -129,7 +129,7 @@ def process_check_exists(tbl_name, tbl_rec,tbl_dic,con,schema,output_log):
 
     
 def process_insert_table(tbl_name, tbl_rec,tbl_dic,con,schema,seq_name,output_log):
-    
+    global StartTM
     firstPart="INSERT INTO "+schema+"."+tbl_name+" (ID," #add columns
     secondPart=" VALUES ("+str(seq_name)+".nextVal,"  #add values
    
@@ -209,14 +209,19 @@ def process_insert_table(tbl_name, tbl_rec,tbl_dic,con,schema,seq_name,output_lo
         
         
    
-def process_update_table(tbl_name, tbl_rec,tbl_dic,con,schema,output_log):
+def process_update_table(tbl_name, tbl_rec,tbl_dic,con,schema,output_log,**optional_where_condition):
     
     "ASSUMPTIONS!!!"
     "THis code assumes that if a value is null that it does not update the ORacle table."
     "Need to make a code change if that rule is not true"
     
-    updateSQL="UPDATE "+schema+"."+tbl_name+" SET " #add columns
+    "This routine is intended to update a single row.  If more than record is updated the process errors"
+    "Optional"     
+    
     whereClause="WHERE "
+    
+    updateSQL="UPDATE "+schema+"."+tbl_name+" SET " #add columns
+    
 
     for key, value in tbl_rec.items() :
       
@@ -241,7 +246,8 @@ def process_update_table(tbl_name, tbl_rec,tbl_dic,con,schema,output_log):
                 if nulVal:
                     #problem ix value should not be null
 #                    process_ERROR_END("ERROR: "+key+" is a unique index STRING/VARCHAR value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
-                    raise Exception("ERROR: "+key+" is a unique index STRING/VARCHAR value but was passed as null when updating "+tbl_name)
+                    writelog("WARNING: "+key+" is a unique index STRING/VARCHAR value but was passed as null when updating "+tbl_name,output_log)
+#                    raise Exception("ERROR: "+key+" is a unique index STRING/VARCHAR value but was passed as null when updating "+tbl_name)
                 else:
                    whereClause+=str(key)+"='"+str(value).rstrip(' ')+"' AND "  
                    
@@ -254,7 +260,8 @@ def process_update_table(tbl_name, tbl_rec,tbl_dic,con,schema,output_log):
                 if nulVal:
                     #problem ix value should not be null
 #                    process_ERROR_END("ERROR: "+key+" is a unique index DATETIME value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
-                    raise Exception("ERROR: "+key+" is a unique index DATETIME value but was passed as null when updating "+tbl_name) 
+#                    raise Exception("ERROR: "+key+" is a unique index DATETIME value but was passed as null when updating "+tbl_name) 
+                    writelog("WARNING: "+key+" is a unique index STRING/VARCHAR value but was passed as null when updating "+tbl_name,output_log)
                 else:
                     whereClause+=str(key)+"="+format_date(value)+" AND "  
                    
@@ -266,7 +273,8 @@ def process_update_table(tbl_name, tbl_rec,tbl_dic,con,schema,output_log):
                 if nulVal:
                     #problem ix value should not be null
 #                    process_ERROR_END("ERROR: "+key+" is a unique index NUMBER value but was passed as null to the "+whereami()+ " procedure for an update to "+tbl_name)
-                     raise Exception("ERROR: "+key+" is a unique index NUMBER value but was passed as null when updating "+tbl_name)
+#                     raise Exception("ERROR: "+key+" is a unique index NUMBER value but was passed as null when updating "+tbl_name)
+                     writelog("WARNING: "+key+" is a unique index STRING/VARCHAR value but was passed as null when updating "+tbl_name,output_log)
                 else:
                    whereClause+=str(key)+"="+str(value)+" AND "  
                     
@@ -276,20 +284,31 @@ def process_update_table(tbl_name, tbl_rec,tbl_dic,con,schema,output_log):
         except KeyError as e:
             writelog("WARNING: Column "+key+" not found in the "+tbl_name+" table.  Skipping.",output_log)
             writelog("KeyError:"+e.message,output_log)
-                
-    whereClause=whereClause.rstrip(' ').rstrip('AND')
-    updateSQL=updateSQL.rstrip(',')
         
+    if ('addlwhere' in optional_where_condition):
+#        print 'optional parameter found, it is ', optional_where_condition['addlwhere']
+        whereClause+=" "+optional_where_condition['addlwhere']+" "
+            
+    whereClause=whereClause.rstrip(' ').rstrip('AND')
+    updateSQL=updateSQL.rstrip(',')        
     updCurs=con.cursor()
     updateSQL+=" "+whereClause
- 
+    
+    #Not all KEY values need to be part of the where clause, check to see that the where clause has at least one condition.
+    if len(whereClause) <=6:
+        raise Exception("ERROR: the where clause for process_update_table has no conditions. SQL:"+updateSQL)
+        
     try:
         updCurs.execute(updateSQL) 
-#        print "Number of rows updated: " + updCurs.count??????
+        if (updCurs.rowcount) == 1:
+            writelog("SUCCESSFUL UPDATE TO  "+tbl_name+". "+str(updCurs.rowcount) +" row udpated.",output_log)
+        elif (updCurs.rowcount) == 0:
+            writelog("ERROR:  No records updated for "+tbl_name,output_log)
+            writelog("Problem SQL:"+updateSQL,output_log)
+        elif (updCurs.rowcount) > 1:
+            writelog("ERROR: "+str(updCurs.rowcount)+" records updated for "+tbl_name+".  process_update_table intended to update a single record.",output_log)
+            writelog("Problem SQL:"+updateSQL,output_log)
         con.commit()
-        writelog("SUCCESSFUL UPDATE TO  "+tbl_name+".",output_log)
-        writelog("SUCCESSFUL INSERT INTO "+tbl_name+".",output_log)
-        
     except cx_Oracle.DatabaseError, exc:
         if ("%s" % exc.message).startswith('ORA-:'):
             writelog("****** ORACLE ERROR "+str(tbl_name)+"**************************",output_log)
