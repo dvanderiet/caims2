@@ -23,13 +23,16 @@ global record_counts,unknown_record_counts
 #record_counts={}
 #unknown_record_counts={} 
 ##http://www.3480-3590-data-conversion.com/article-signed-fields.html
-MONTH_DICT={'01':'JAN','02':'FEB','03':'MAR','04':'APR','05':'MAY','06':'JUN','07':'JUL','08':'AUG','09':'SEP','10':'OCT','11':'NOV','12':'DEC',} 
+MONTH_DICT={'01':'JAN','02':'FEB','03':'MAR','04':'APR','05':'MAY','06':'JUN','07':'JUL','08':'AUG','09':'SEP','10':'OCT','11':'NOV','12':'DEC'} 
 DIGIT_DICT={'0':'0','1':'1','2':'2','3':'3','4':'4','5':'5','6':'6','7':'7','8':'8','9':'9',\
             '{':'0','A':'1','B':'2','C':'3','D':'4','E':'5','F':'6','G':'7','H':'8','I':'9',\
             '}':'0','J':'1','K':'2','L':'3','M':'4','N':'5','O':'6','P':'7','Q':'8','R':'9'}
 
 NEGATIVE_NUMS=['}','J','K','L','M','N','O','P','Q','R']
  
+DATE_WHITELIST=['1','2','3','4','5','6','7','8','9','0']
+NUMBER_WHITELIST= ['1','2','3','4','5','6','7','8','9','0','.','-']
+INTEGER_WHITELIST=['1','2','3','4','5','6','7','8','9','0']
 #    
 #def whereami():
 #    # returns the name of the current executing procedure, etc...
@@ -56,6 +59,82 @@ def format_date(datestring):
         return "TO_DATE('"+datestring[:4]+"-"+datestring[4:6]+"-"+datestring[6:8]+"','YYYY-MM-DD')"     
 
 
+def format_date_string(datestring):
+#   This method is to format date to a 'MMDDYYYY' string to be compatible with cx_oracle executemany date value
+#    return 19000101 for null /zero values
+    dtSize=len(datestring)
+    
+    if datestring.strip('0').strip(' ') == '' :        
+        return '01011900'
+    elif dtSize ==5:
+        #jdate conversion
+        return datetime.datetime.strptime(datestring, '%y%j').strftime('%m%d%Y')
+    elif dtSize==6:        
+        dtstr="20" + datestring[:2] + datestring[2:4] + datestring[4:6]
+        return datetime.datetime.strptime(dtstr, '%Y%m%d').strftime('%m%d%Y')
+    elif dtSize==8:        
+        return datetime.datetime.strptime(datestring, '%Y%m%d').strftime('%m%d%Y')
+        
+def format_oracle_date(MMDDYYYY):
+#This method converts a date from MMDDYYYY to DD-MON-YYYY
+#example: input - '01052016'  output - '05-Jan-2016'
+    #return MMDDYYYY[2:4] + '-' + MONTH_DICT[MMDDYYYY[:2]] + '-' + MMDDYYYY[4:8]
+    return MMDDYYYY
+
+
+def clean_focus_input(tbl_defn_dict, field, value):
+
+    #If data being received is from a focus datatbase it has '/'s in the date fields 
+    #Also fields that are used for money are coming in with '$' in it 
+    #FOCUS allows for blank keys, but we need to set default values for reuired fields
+    #String - Strip off trailing spaces and set it to 'nl' if it is an indexed field
+    #Number - Strip off any dollar signs in money and default to 0 if it is an indexed field
+    #Integer - Default to 0 if it is an indexed field
+
+    global DATE_WHITELIST
+    global NUMBER_WHITELIST
+    global INTEGER_WHITELIST
+    
+    returnVal=''
+
+    if field in tbl_defn_dict:        
+        if tbl_defn_dict[field] in ('c|STRING', 'x|STRING'):
+            returnVal=str(value).rstrip(' ')
+            if returnVal == '' and tbl_defn_dict[field] == 'x|STRING':
+                returnVal='nl'                
+        if tbl_defn_dict[field] in ('c|DATETIME', 'x|DATETIME'):
+            for char in value:
+                if char in DATE_WHITELIST:
+                    returnVal += char
+            if returnVal == '' and tbl_defn_dict[field] == 'x|DATETIME':
+                returnVal='19000101'
+            else:
+                returnVal=format_date_string(returnVal)                   
+        elif tbl_defn_dict[field] in ('c|NUMBER','x|NUMBER'):
+            for char in value:
+                if char in NUMBER_WHITELIST:
+                    returnVal += char
+            if returnVal == '' and tbl_defn_dict[field] == 'x|NUMBER':
+                returnVal = 0                
+        elif tbl_defn_dict[field] in ('c|INTEGER','x|INTEGER'):            
+            for char in value:
+                if char in INTEGER_WHITELIST:
+                    returnVal += char
+            if returnVal == '' and tbl_defn_dict[field] == 'x|INTEGER':
+                returnVal = 0
+        else:
+            returnVal = str(value).rstrip(' ')
+    else:
+        returnVal=value
+            
+    return returnVal
+    
+def getUniqueAcnaBanBillDate(tbl_name, eob_date, con, schema, output_log):
+    #Returns a concatenated list of all of the unique ACNA BAN and EOB_DATE
+    #This will be used to return the entire list to check for duplicates in memory instead of making an oracle call every time
+    
+    sqlQuery="SELECT distinct(acna||ban||eob_date) FROM "+schema+"."+tbl_name+" WHERE eob_date = '" + format_date(eob_date) + "'
+    
 def process_check_exists(tbl_name, tbl_rec,tbl_dic,con,schema,output_log):
 #(process_check_exists("CAIMS_BDT_BALDTL", tmpTblRec, BDT_BALDTL_DEFN_DICT,con,output_log)):
 #return true or false
@@ -126,6 +205,146 @@ def process_check_exists(tbl_name, tbl_rec,tbl_dic,con,schema,output_log):
         return 0
    
         
+def db_record_exists(tbl_name, acna, ban, eob_date, con, schema, output_log):
+    
+    result=False
+    
+    chkCurs = con.cursor()
+    
+    try:
+        selquery= "SELECT count(*) FROM "+schema+"."+tbl_name+" WHERE acna='"+acna+"' AND ban='"+ban+"' AND eob_date=TO_DATE('"+eob_date+"','YYMMDD')"
+        chkCurs.execute(selquery)
+        if chkCurs.fetchone()[0] > 0:            
+            result=True
+    except cx_Oracle.DatabaseError, exc:
+        if ("%s" % exc.message).startswith('ORA-:'):
+            writelog("ERROR:"+str(exc.message),output_log)
+            writelog("Select SQL Causing problem:"+updateSQL,output_log)
+    finally:
+        chkCurs.close()
+
+    return result
+
+    
+def process_insert_many_table(tbl_name, tbl_rec,tbl_dic,con,schema,seq_name,output_log):
+
+    ##########################################
+    #Code required to perform an executemany: 
+    #
+    #   con=cx_Oracle.connect(user,password,database)
+    #   con.cursor()
+    #   sql="INSERT INTO SCHEMA.TBL_NAME (id, first_name, last_name, dob) VALUES (:1, :2, :3, :4)"
+    #   rows=[('1','John','Doe','01301988'),
+    #         ('2','Jane','Doe','08251989')]
+    #   cursor.prepare(sql)
+    #   cursor.executemany(None, rows)
+    #   con.commit()
+    #   cursor.close()
+    #   con.close()
+    ##########################################
+    
+    ##########################################    
+    #This method iterates over each field of a table to generate the 3 parts needed
+    #   1) String with the insert statement plus the field names (stored in firstPart)
+    #   2) Bind variables (stored in bindVars)
+    #   3) A tuple that contains the values to be inserted which will be added 
+    #      to a list of rows(stored in secondPart)
+    ##########################################
+    
+    cnt=0    
+    firstPart="INSERT INTO "+schema+"."+tbl_name + " ("
+    bindVars="("
+    secondPart=[]    
+ 
+    for key, value in tbl_rec.items() :        
+        nulVal=False
+        if str(value).rstrip(' ') == '':
+            nulVal=True
+   
+        try:
+            if tbl_dic[key] in ('c|STRING', 'x|STRING'):
+                firstPart+=key+","
+                if nulVal:
+                    if tbl_dic[key] == 'x|STRING':                        
+                        secondPart.append("nl")                        
+                        cnt+=1
+                        if cnt==1:
+                            bindVars = bindVars + ':' + str(cnt)
+                        else:
+                            bindVars = bindVars + ',:' + str(cnt)
+                    else:                        
+                        secondPart.append('')                        
+                        cnt+=1
+                        if cnt==1:
+                            bindVars = bindVars + ':' + str(cnt)
+                        else:
+                            bindVars = bindVars + ',:' + str(cnt)
+                else:
+                    secondPart.append(str(value).rstrip(' '))
+                    cnt+=1
+                    if cnt==1:
+                        bindVars = bindVars + ':' + str(cnt)
+                    else:
+                        bindVars = bindVars + ',:' + str(cnt)
+            elif tbl_dic[key] in ('c|DATETIME', 'x|DATETIME'):
+                firstPart+=key+","
+                if nulVal:
+                    if tbl_dic[key] == 'x|DATETIME':  #use 19000101 as null value if index key
+                        #NOTE: All dates in an executemany must be converted to oracle date format ex: '01-Jan-2016'
+                        secondPart.append(format_oracle_date(format_date_string('19000101')))                       
+                        cnt+=1
+                        if cnt==1:
+                            bindVars = bindVars + ':' + str(cnt)
+                        else:
+                            bindVars = bindVars + ',:' + str(cnt)
+                    else:                        
+                        secondPart.append('')                        
+                        cnt+=1
+                        if cnt==1:
+                            bindVars = bindVars + ':' + str(cnt)
+                        else:
+                            bindVars = bindVars + ',:' + str(cnt)
+                else:                    
+                    secondPart.append(format_oracle_date(format_date_string(value)))
+                    cnt+=1
+                    if cnt==1:
+                        bindVars = bindVars + ':' + str(cnt)
+                    else:
+                        bindVars = bindVars + ',:' + str(cnt)
+            elif tbl_dic[key] in ('c|NUMBER','x|NUMBER','c|INTEGER','x|INTEGER'):
+                firstPart+=key+","
+                "RULE: if null/blank number, then populate with 0."
+                if nulVal:                    
+                    secondPart.append('0')                    
+                    cnt+=1
+                    if cnt==1:
+                        bindVars = bindVars + ':' + str(cnt)
+                    else:
+                        bindVars = bindVars + ',:' + str(cnt)
+                else:
+                    secondPart.append(str(value))
+                    cnt+=1
+                    if cnt==1:
+                        bindVars = bindVars + ':' + str(cnt)
+                    else:
+                        bindVars = bindVars + ',:' + str(cnt)
+            else:               
+                raise Exception("ERROR: Could not determine data type for " +tbl_dic[key] + " in the "+tbl_name+" table.")
+        except KeyError as e:
+            ##With focus records there will be too many inserts to the log for this error so just continue
+            #writelog("WARNING: Column "+key+" not found in the "+tbl_name+" table.  Skipping.",output_log)
+            #writelog("KeyError:"+e.message,output_log)
+            continue
+ 
+    firstPart=firstPart.rstrip(',')+")"         
+    bindVars=bindVars.rstrip(',') +")"
+    result={}
+    result['firstPart']=firstPart
+    result['secondPart']=secondPart
+    result['bindVars']=bindVars
+
+    return result
+
 
     
 def process_insert_table(tbl_name, tbl_rec,tbl_dic,con,schema,seq_name,output_log):
