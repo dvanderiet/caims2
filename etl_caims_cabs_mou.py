@@ -35,42 +35,34 @@ REASON:
 
 """
 import datetime
+startTM=datetime.datetime.now()
 import cx_Oracle
 import sys
 import ConfigParser
 import platform
 import os
-import logging
+import copy
 
-startTM=datetime.datetime.now();
+###IMPORT COMMON/SHARED UTILITIES
+#
+from etl_caims_cabs_utility import  process_insert_many_table, translate_TACCNT_FGRP, writelog, \
+                                    createTableTypeDict,setDictFields,convertnumber, invalid_acna_chars, db_record_exists
+
 
 settings = ConfigParser.ConfigParser();
-settings.read('C:/Users/cjy005423/Documents/CAIMS FILES/settings.ini')
+settings.read('settings.ini')
 settings.sections()
-
-"INIT LOGGING TO A FILE"
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-hdlr = logging.FileHandler("C:/Users/cjy005423/Documents/Python Scripts/out/example.log")
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-hdlr.setFormatter(formatter)
-logger.addHandler(hdlr) 
 
 "SET ORACLE CONNECTION"
 con=cx_Oracle.connect(settings.get('OracleSettings','OraCAIMSUser'),settings.get('OracleSettings','OraCAIMSPw'),settings.get('OracleSettings','OraCAIMSSvc'))    
-
-
+schema=settings.get('OracleSettings','OraCAIMSUser')
 "CONSTANTS"
+
 if str(platform.system()) == 'Windows': 
     output_dir = settings.get('GlobalSettings','WINDOWS_LOG_DIR');
 else:
     output_dir = settings.get('GlobalSettings','LINUX_LOG_DIR');
     
-#set to true to get debug statements
-debugOn=True
-if debugOn:
-    debug_log=open(os.path.join(output_dir,settings.get('BDTSettings','BDT_DEBUG_FILE_NM')),"w")
 
 #SET FILE NAME AND PATH
 #--inputPath comes from settings.ini
@@ -94,23 +86,33 @@ if str(platform.system()) == 'Windows':
 else:
     inputPath=settings.get('BDTSettings','LINUX_BDT_inDir') 
 
-fullname =os.path.join(inputPath,fileNm)
+IP_FILENM_AND_PATH =os.path.join(inputPath,fileNm)
 
-if os.path.isfile(fullname):
-    print ("Input file:"+fullname)
+if os.path.isfile(IP_FILENM_AND_PATH):
+    print ("Input file:"+IP_FILENM_AND_PATH)
 else:
-    raise Exception("ERROR: File not found:"+fullname)
+    raise Exception("ERROR: File not found:"+IP_FILENM_AND_PATH)
 
+
+global mou_version
+#mou_version = 'G0354'
 
 "GLOBAL VARIABLES"    
 global statpg_rec
 global line
 global dtl_rec
+global current_parent_rec
 global parent_1010_rec
 global parent_3505_rec
+global parent_3510_rec
+global parent_3515_rec
 global parent_3520_rec
 global parent_3527_rec
 global parent_3905_rec
+global parent_3910_rec
+global parent_3920_rec
+global parent_3927_rec
+
 global dup_ban_lock
 global invalid_fgrp_lock
 global badKey
@@ -118,13 +120,27 @@ global badKey
 global curr_3520_RE_part1
 global curr_3520_RE_part2
 
+global bctfmou_cnt
+global dtlrec_cnt
+global statpg_cnt
+
+bctfmou_cnt=0
+dtlrec_cnt=0
+statpg_cnt=0
+
 statpg_rec=False
 dtl_rec=False
 parent_1010_rec=False
 parent_3505_rec=False
+parent_3510_rec=False
+parent_3515_rec=False
 parent_3520_rec=False
 parent_3527_rec=False
 parent_3905_rec=False
+parent_3910_rec=False
+parent_3920_rec=False
+parent_3927_rec=False
+
 dup_ban_lock=False
 invalid_fgrp_lock=False
  
@@ -144,18 +160,18 @@ abbdcLst=[]             #acna ban billdate clli
 abbdcrecicjdLst=[]      #acna ban billdate clli re cic jursdn_cd (3505,3510,3515,3520 record types RATEREC)
 abbdcrnLst=[]           #acna ban billdate clli record_num (3527 record types STATPG)
 
+mou_bctfmou_records={}
+mou_dtlrec_records={}
+mou_statpg_records={}
 
-
-
+results={}
+exmanyCnt=0
  
 record_counts={}
 unknown_record_counts={}
 BILL_REC='10' 
 STAR_LINE='*********************************************************************************************'  
-MONTH_DICT={'01':'JAN','02':'FEB','03':'MAR','04':'APR','05':'MAY','06':'JUN','07':'JUL','08':'AUG','09':'SEP','10':'OCT','11':'NOV','12':'DEC'}
-DIGIT_DICT={'0':'0','1':'1','2':'2','3':'3','4':'4','5':'5','6':'6','7':'7','8':'8','9':'9',\
-            '{':'0','A':'1','B':'2','C':'3','D':'4','E':'5','F':'6','G':'7','H':'8','I':'9',\
-            '}':'0','J':'1','K':'2','L':'3','M':'4','N':'5','O':'6','P':'7','Q':'8','R':'9'} 
+
 NEGATIVE_NUMS=['}','J','K','L','M','N','O','P','Q','R']
 VALID_FGRP=['1','2','3','4','J','U']
 VALID_RECORD_TYPES={'010100':'PARENT', '050500':'CHILD', '070500':'CHILD',                      \
@@ -164,22 +180,21 @@ VALID_RECORD_TYPES={'010100':'PARENT', '050500':'CHILD', '070500':'CHILD',      
                     '351500':'PARENT',                                                          \
                     '352000':'PARENT', '352001':'CHILD', '352002':'CHILD',                      \
                     '352700':'PARENT', '352701':'CHILD', '352702':'CHILD', '352750':'CHILD',    \
-                    '352500':'PARENT'}
+                    '390500':'PARENT',                                                          \
+                    '391000':'PARENT',                                                          \
+                    '392000':'PARENT',                                                          \
+                    '392700':'PARENT', '392701':'CHILD'}
    
 "TRANSLATERS"
 
-def debug(msg):
-    if debugOn:
-        debug_log.write("\n"+str(msg))
 
 def init():
     global bdt_input 
-    global bdt_BCTFMOU_log
+    global output_log
     global record_id
-  
     "OPEN FILES"
     "   CABS INPUT FILE"
-    bdt_input = open(fullname, "r");
+    bdt_input = open(IP_FILENM_AND_PATH, "r");
     
     "PROCESS HEADER LINE"
     "  -want to get bill cycle info for output log file "
@@ -194,22 +209,22 @@ def init():
     "  CREATE LOG FILE WITH CYCLE DATE FROM HEADER AND RUN TIME OF THIS JOB"
     log_file=os.path.join(output_dir,"BDT_Cycle"+str(cycl_yy)+str(cycl_mmdd)+str(cycl_time)+"_"+startTM.strftime("%Y%m%d_@%H%M") +".txt")
          
-    bdt_BCTFMOU_log = open(log_file, "w");
-    bdt_BCTFMOU_log.write("-BDT CAIMS ETL PROCESS-")
+    output_log = open(log_file, "w");
+    output_log.write("-BDT CAIMS ETL PROCESS-")
     
     if record_id not in settings.get('BDTSettings','BDTHDR'):
         process_ERROR_END("The first record in the input file was not a "+settings.get('BDTSettings','BDTHDR').rstrip(' ')+" record.")
 
-    writelog("Process "+sys.argv[0])
-    writelog("   started execution at: " + str(startTM))
-    writelog(STAR_LINE)
-    writelog(" ")
-    writelog("Input file: "+str(bdt_input))
-    writelog("Log file: "+str(bdt_BCTFMOU_log))
+    writelog("Process "+sys.argv[0], output_log)
+    writelog("   started execution at: " + str(startTM), output_log)
+    writelog(STAR_LINE, output_log)
+    writelog(" ", output_log)
+    writelog("Input file: "+str(bdt_input), output_log)
+    writelog("Log file: "+str(output_log), output_log)
     
     "Write header record informatio only"
-    writelog("Header Record Info:")
-    writelog("     Record ID: "+record_id+" YY: "+cycl_yy+", MMDD: "+cycl_mmdd+", TIME: "+str(cycl_time))
+    writelog("Header Record Info:", output_log)
+    writelog("     Record ID: "+record_id+" YY: "+cycl_yy+", MMDD: "+cycl_mmdd+", TIME: "+str(cycl_time), output_log)
     
     count_record(record_id,False)
     del headerLine,cycl_yy,cycl_mmdd,cycl_time
@@ -234,15 +249,12 @@ def main():
     global MOU_BCTFMOU_DEFN_DICT
     global MOU_STATPG_tbl
     global MOU_STATPG_DEFN_DICT
-    global MOU_RATEREC_tbl
-    global MOU_RATEREC_DEFN_DICT
     global MOU_DTLREC_tbl
     global MOU_DTLREC_DEFN_DICT
     
     
     "text files"
     global bdt_input
-    global bdt_BCTFMOU_log
     global BDT_column_names
     global firstBillingRec    
     global record_id
@@ -252,23 +264,26 @@ def main():
     global goodKey
     global dup_ban_lock
     global invalid_fgrp_lock
+    global current_parent_rec
+    global output_log
+    global mou_bctfmou_records, mou_dtlrec_records, mou_statpg_records
     
     firstBillingRec=True
 #DECLARE TABLE ARRAYS AND DICTIONARIES
-    MOU_BCTFMOU_tbl={}
-    MOU_BCTFMOU_DEFN_DICT=createTableTypeDict('CAIMS_MOU_BCTFMOU')
-    MOU_STATPG_tbl={}
-    MOU_STATPG_DEFN_DICT=createTableTypeDict('CAIMS_MOU_STATPG')    
-    MOU_RATEREC_tbl={}
-    MOU_RATEREC_DEFN_DICT=createTableTypeDict('CAIMS_MOU_RATEREC')
-    MOU_DTLREC_tbl={}
-    MOU_DTLREC_DEFN_DICT=createTableTypeDict('CAIMS_MOU_DTLREC')
+    MOU_BCTFMOU_DEFN_DICT=createTableTypeDict('CAIMS_MOU_BCTFMOU',con,schema,output_log)
+    MOU_BCTFMOU_tbl=setDictFields('CAIMS_MOU_BCTFMOU', MOU_BCTFMOU_DEFN_DICT) 
     
+    MOU_STATPG_DEFN_DICT=createTableTypeDict('CAIMS_MOU_STATPG',con,schema,output_log)
+    MOU_STATPG_tbl=setDictFields('CAIMS_MOU_STATPG', MOU_STATPG_DEFN_DICT) 
+    
+    MOU_DTLREC_DEFN_DICT=createTableTypeDict('CAIMS_MOU_DTLREC',con,schema,output_log)
+    MOU_DTLREC_tbl=setDictFields('CAIMS_MOU_DTLREC', MOU_DTLREC_DEFN_DICT) 
 
     "COUNTERS"
     inputLineCnt=1 #header record was read in init()
     BDT_KEY_cnt=0
     status_cnt=0
+    exmanyCnt=0
     "KEY"
     
     prev_abbd_rec_key={'ACNA':'XXX','EOB_DATE':'990101','BAN':'000'}
@@ -276,10 +291,11 @@ def main():
     "LOOP THROUGH INPUT CABS TEXT FILE"
     for line in bdt_input:    
         
+        "Count each line"
         inputLineCnt += 1 #Count each line
         status_cnt+=1
         if status_cnt>999:
-            print str(inputLineCnt)+" lines completed processing***********************************"
+            print str(inputLineCnt)+" lines completed processing...."+str(datetime.datetime.now())
             status_cnt=0               
         
         if len(line) > 231:
@@ -291,12 +307,11 @@ def main():
         #    break
         "Process by record_id"    
         "Header rec (first rec) processed in init()"
-        #If the new record is a parent we need to insert records
-        if record_id in VALID_RECORD_TYPES.keys() and VALID_RECORD_TYPES[record_id] == "PARENT":
+        #If the new record is a valid parent we need to insert record of previos parent
+        if record_id in VALID_RECORD_TYPES.keys() and VALID_RECORD_TYPES[record_id] == "PARENT" and dup_ban_lock == False:
             process_inserts(record_id)
              
         if line[:2] == BILL_REC:
-            
             "START-MAIN PROCESS LOOP"
             "GET KEY OF NEXT RECORD"
             current_abbd_rec_key=process_getkey()
@@ -309,10 +324,19 @@ def main():
                 count_record("BAD_FGRP",True)
             elif badKey:
                 count_record("BAD_ABD_KEY",True)
-                writelog("WARNING: BAD INPUT DATA.  ACNA="+current_abbd_rec_key['ACNA']+", BAN="+current_abbd_rec_key['BAN']+", EOB_DATE="+current_abbd_rec_key['EOB_DATE'])
+                current_parent_rec = ''
+                writelog("WARNING: BAD INPUT DATA.  ACNA="+current_abbd_rec_key['ACNA']+", BAN="+current_abbd_rec_key['BAN']+", EOB_DATE="+current_abbd_rec_key['EOB_DATE'], output_log)
             else:
                 if current_abbd_rec_key != prev_abbd_rec_key:
                     BDT_KEY_cnt+=1                    
+                    exmanyCnt+=1
+                    if exmanyCnt >= 5:
+                        process_insertmany()
+                        
+                        exmanyCnt=0
+                        mou_bctfmou_records={}
+                        mou_dtlrec_records={}
+                        mou_statpg_records={}
                     
                 process_bill_records()
    
@@ -326,25 +350,25 @@ def main():
             
         else:
             "ERROR:Unidentified Record"
-            writelog("ERROR: Not sure what type of record this is:")
-            writelog(line)
+            writelog("ERROR: Not sure what type of record this is:", output_log)
+            writelog(line, output_log)
          
          
         prev_record_id=record_id
         "END-MAIN PROCESS LOOP"    
     #END of For Loop
- 
+    process_insertmany()
 
 def log_footer_rec_info():
     global record_id
     
     BAN_cnt=line[6:12]
     REC_cnt=line[13:22]
-    writelog(" ")
-    writelog("Footer Record Info:")
-    writelog("     Record ID "+record_id+" BAN Count: "+BAN_cnt+" RECORD CNT: "+REC_cnt)
-    writelog("The total number of lines counted in input file is : "+ str(inputLineCnt))
-    writelog(" ")
+    writelog(" ", output_log)
+    writelog("Footer Record Info:", output_log)
+    writelog("     Record ID "+record_id+" BAN Count: "+BAN_cnt+" RECORD CNT: "+REC_cnt, output_log)
+    writelog("The total number of lines counted in input file is : "+ str(inputLineCnt), output_log)
+    writelog(" ", output_log)
     
     count_record(record_id,False)
 
@@ -357,9 +381,9 @@ def process_bill_records():
     if firstBillingRec:
         "FIRST RECORD ONLY"
         #write BOS version number to log
-        writelog("**--------------------------**")
-        writelog("** BOS VERSION NUMBER IS "+line[82:84]+" ** ")
-        writelog("**--------------------------**")
+        writelog("**--------------------------**", output_log)
+        writelog("** BOS VERSION NUMBER IS "+line[82:84]+" ** ", output_log)
+        writelog("**--------------------------**", output_log)
         firstBillingRec=False
         
 #    rid0 = record_id[:2]
@@ -402,9 +426,31 @@ def process_bill_records():
     elif record_id in ('352701','352702','352750'):
         process_TYP3527_CHILD()
 #
-    elif record_id[:4] == '3525':
-        #process_TYP352500()
-        writelog(line[6:30]+"- 3525 - SUB_TOT_IND - "+line[96:97])        
+    elif record_id == '390500':             
+        process_TYP390500()
+        set_flags(record_id)
+#
+    elif record_id == '391000':
+        process_TYP391000()
+        set_flags(record_id)
+#
+    elif record_id == '392000':
+        process_TYP392000()
+        set_flags(record_id)
+#  
+    elif record_id == '392700':  
+        process_TYP3927_PARENT()
+        set_flags(record_id)
+#
+    elif record_id == '392701':
+        process_TYP3927_CHILD()
+#
+
+#### 3525 Does nothing after BOS version 41 so don't process       
+#    elif record_id[:4] == '3525':
+#        #process_TYP352500() 
+#        writelog(line[6:30]+"- 3525 - SUB_TOT_IND - "+line[96:97])        
+####
     else:  #UNKNOWN RECORDS
         unknownRecord=True
     
@@ -413,15 +459,30 @@ def process_bill_records():
 
 def process_getkey():
     global badKey
+    global blankACNA
+    global badCharsInACNA
     
-    if line[6:11].rstrip(' ') == '' or line[17:30].rstrip(' ') == '' or line[11:17].rstrip(' ') == '':
-        badKey=True
-    else:
+    tmpACNA=line[6:11].rstrip(' ')
+    tmpBAN=line[17:30].rstrip(' ')
+    tmpEOB_DATE=line[11:17].rstrip(' ')
+    newACNA='nl'
         badKey=False
+    blankACNA=False
+    badCharsInACNA=False
         
-    return { 'ACNA':line[6:11],'EOB_DATE':line[11:17],'BAN':line[17:30]}
+    if tmpACNA=='':
+        newACNA='nl'
+        blankACNA=True
+    elif invalid_acna_chars(tmpACNA):
+        newACNA='nl'
+        badCharsInACNA=True
+    else:
+        newACNA=tmpACNA
      
+    if tmpBAN == '' or tmpEOB_DATE == '':
+        badKey=True
      
+    return { 'ACNA': newACNA, 'EOB_DATE':tmpEOB_DATE, 'BAN':tmpBAN}
      
      
 def process_inserts(record_id):
@@ -432,44 +493,67 @@ def process_inserts(record_id):
     global MOU_STATPG_tbl
     global MOU_STATPG_DEFN_DICT    
     global current_parent_rec
-
-#    if current_parent_rec=='010100' and record_id != '050500' and record_id != '070500':
-#        process_insert_table("CAIMS_MOU_BCTFMOU", MOU_BCTFMOU_tbl,MOU_BCTFMOU_DEFN_DICT)
-#        current_parent_rec=''
+    global bctfmou_cnt, dtlrec_cnt, statpg_cnt
+    global mou_bctfmou_records, mou_dtlrec_records, mou_statpg_records
         
     if current_parent_rec=='010100':
-        writelog("INSERTING 010100 RECORD")
-        process_insert_table("CAIMS_MOU_BCTFMOU", MOU_BCTFMOU_tbl,MOU_BCTFMOU_DEFN_DICT)
+        bctfmou_cnt+=1        
+        mou_bctfmou_records[bctfmou_cnt]= copy.deepcopy(MOU_BCTFMOU_tbl)
+        initialize_BCTFMOU_tbl()
         current_parent_rec=record_id
     
     elif current_parent_rec=='350500':
-        writelog("INSERTING 350500 RECORD")
-        process_insert_table("CAIMS_MOU_DTLREC", MOU_DTLREC_tbl,MOU_DTLREC_DEFN_DICT)
+        dtlrec_cnt+=1        
+        mou_dtlrec_records[dtlrec_cnt]= copy.deepcopy(MOU_DTLREC_tbl)
+        initialize_DTLREC_tbl()
         current_parent_rec=record_id
     
     elif current_parent_rec=='351000':
-        writelog("INSERTING 351000 RECORD")
-        process_insert_table("CAIMS_MOU_DTLREC", MOU_DTLREC_tbl,MOU_DTLREC_DEFN_DICT)
+        dtlrec_cnt+=1
+        mou_dtlrec_records[dtlrec_cnt]= copy.deepcopy(MOU_DTLREC_tbl)
+        initialize_DTLREC_tbl()
         current_parent_rec=record_id
     
     elif current_parent_rec=='351500':
-        writelog("INSERTING 351500 RECORD")
-        process_insert_table("CAIMS_MOU_DTLREC", MOU_DTLREC_tbl,MOU_DTLREC_DEFN_DICT)
+        dtlrec_cnt+=1
+        mou_dtlrec_records[dtlrec_cnt]= copy.deepcopy(MOU_DTLREC_tbl)
+        initialize_DTLREC_tbl()
         current_parent_rec=record_id
     
     elif current_parent_rec=='352000':
-        writelog("INSERTING 352000 RECORD")
-        process_insert_table("CAIMS_MOU_DTLREC", MOU_DTLREC_tbl,MOU_DTLREC_DEFN_DICT)
-        current_parent_rec=record_id
-        
-    elif current_parent_rec=='352500':
-        writelog("INSERTING 352500 RECORD")
-        process_insert_table("CAIMS_MOU_DTLREC", MOU_DTLREC_tbl, MOU_DTLREC_DEFN_DICT)
+        dtlrec_cnt+=1
+        mou_dtlrec_records[dtlrec_cnt]= copy.deepcopy(MOU_DTLREC_tbl)
+        initialize_DTLREC_tbl()
         current_parent_rec=record_id
         
     elif current_parent_rec=='352700':
-        writelog("INSERTING 352700 RECORD")
-        process_insert_table("CAIMS_MOU_STATPG", MOU_STATPG_tbl, MOU_STATPG_DEFN_DICT)
+        statpg_cnt+=1
+        mou_statpg_records[statpg_cnt]= copy.deepcopy(MOU_STATPG_tbl)
+        initialize_STATPG_tbl()
+        current_parent_rec=record_id
+        
+    elif current_parent_rec=='390500':
+        dtlrec_cnt+=1
+        mou_dtlrec_records[dtlrec_cnt]= copy.deepcopy(MOU_DTLREC_tbl)        
+        initialize_DTLREC_tbl()
+        current_parent_rec=record_id
+        
+    elif current_parent_rec=='391000':
+        dtlrec_cnt+=1
+        mou_dtlrec_records[dtlrec_cnt]= copy.deepcopy(MOU_DTLREC_tbl)
+        initialize_DTLREC_tbl()
+        current_parent_rec=record_id
+        
+    elif current_parent_rec=='392000':
+        dtlrec_cnt+=1
+        mou_dtlrec_records[dtlrec_cnt]= copy.deepcopy(MOU_DTLREC_tbl)
+        initialize_DTLREC_tbl()
+        current_parent_rec=record_id
+        
+    elif current_parent_rec=='392700':
+        statpg_cnt+=1
+        mou_statpg_records[statpg_cnt]= copy.deepcopy(MOU_STATPG_tbl)
+        initialize_STATPG_tbl()
         current_parent_rec=record_id
     else:
         current_parent_rec=record_id
@@ -478,41 +562,126 @@ def process_inserts(record_id):
 def set_flags(current_record_type):
     global parent_1010_rec
     global parent_3505_rec
+    global parent_3510_rec
+    global parent_3515_rec
     global parent_3520_rec
     global parent_3527_rec
     global parent_3905_rec    
+    global parent_3910_rec
+    global parent_3920_rec
+    global parent_3927_rec
     
     if current_record_type=='010100':        
         parent_3505_rec = False
+        parent_3510_rec = False
+        parent_3515_rec = False
         parent_3520_rec = False
         parent_3527_rec = False
         parent_3905_rec = False
+        parent_3910_rec = False
+        parent_3920_rec = False
+        parent_3927_rec = False
     elif current_record_type=='350500':
         parent_1010_rec = False
+        parent_3510_rec = False
+        parent_3515_rec = False
         parent_3520_rec = False
         parent_3527_rec = False
         parent_3905_rec = False
+        parent_3910_rec = False
+        parent_3920_rec = False
+        parent_3927_rec = False
+    elif current_record_type=='351000':
+        parent_1010_rec = False
+        parent_3505_rec = False
+        parent_3515_rec = False
+        parent_3520_rec = False
+        parent_3527_rec = False
+        parent_3905_rec = False
+        parent_3910_rec = False
+        parent_3920_rec = False
+        parent_3927_rec = False
+    elif current_record_type=='351500':
+        parent_1010_rec = False
+        parent_3505_rec = False
+        parent_3510_rec = False
+        parent_3520_rec = False
+        parent_3527_rec = False
+        parent_3905_rec = False
+        parent_3910_rec = False
+        parent_3920_rec = False
+        parent_3927_rec = False
     elif current_record_type=='352000':
         parent_1010_rec=False
         parent_3505_rec=False
+        parent_3510_rec = False
+        parent_3515_rec = False
         parent_3527_rec=False
         parent_3905_rec=False
+        parent_3910_rec = False
+        parent_3920_rec = False
+        parent_3927_rec = False
     elif current_record_type=='352700':
         parent_1010_rec=False
         parent_3505_rec=False
+        parent_3510_rec = False
+        parent_3515_rec = False
         parent_3520_rec=False
         parent_3905_rec=False
+        parent_3910_rec = False
+        parent_3920_rec = False
+        parent_3927_rec = False
     elif current_record_type=='390500':
         parent_1010_rec=False
         parent_3505_rec=False
+        parent_3510_rec = False
+        parent_3515_rec = False
+        parent_3520_rec = False
+        parent_3527_rec = False
+        parent_3910_rec = False
+        parent_3920_rec = False
+        parent_3927_rec = False
+    elif current_record_type=='391000':
+        parent_1010_rec = False
+        parent_3505_rec = False
+        parent_3510_rec = False
+        parent_3515_rec = False
+        parent_3520_rec = False
+        parent_3527_rec = False
+        parent_3905_rec = False
+        parent_3920_rec = False
+        parent_3927_rec = False
+    elif current_record_type=='392000':
+        parent_1010_rec = False
+        parent_3505_rec = False
+        parent_3510_rec = False
+        parent_3515_rec = False
         parent_3520_rec=False
         parent_3527_rec=False
+        parent_3905_rec = False
+        parent_3910_rec = False
+        parent_3927_rec = False
+    elif current_record_type=='392700':
+        parent_1010_rec = False
+        parent_3505_rec = False
+        parent_3510_rec = False
+        parent_3515_rec = False
+        parent_3520_rec = False
+        parent_3527_rec = False
+        parent_3905_rec = False
+        parent_3910_rec = False
+        parent_3920_rec = False
     else:
         parent_1010_rec=False
         parent_3505_rec=False
+        parent_3510_rec=False
+        parent_3515_rec=False
         parent_3520_rec=False
         parent_3527_rec=False
         parent_3905_rec=False
+        parent_3910_rec = False
+        parent_3920_rec = False
+        parent_3927_rec = False
     
 
 def process_TYP010100_PARENT():
@@ -534,12 +703,14 @@ def process_TYP010100_PARENT():
     
     if current_TACCT_FGRP not in VALID_FGRP: #checking for valid fgrp
         invalid_fgrp_lock=True
-        writelog("WARNING: INVALID FGRP - ACNA="+current_abbd_rec_key['ACNA']+", BAN="+current_abbd_rec_key['BAN']+", EOB_DATE="+current_abbd_rec_key['EOB_DATE'] + ", FGRP="+current_TACCT_FGRP)
+        writelog("WARNING: INVALID FGRP - ACNA="+current_abbd_rec_key['ACNA']+", BAN="+current_abbd_rec_key['BAN']+", EOB_DATE="+current_abbd_rec_key['EOB_DATE'] + ", FGRP="+current_TACCT_FGRP, output_log)
         parent_1010_rec=False
-    elif current_abbd_rec_key in abbdLst:
+        current_parent_rec=''
+    elif current_abbd_rec_key in abbdLst or db_record_exists('CAIMS_MOU_BCTFMOU', current_abbd_rec_key['ACNA'],current_abbd_rec_key['BAN'],current_abbd_rec_key['EOB_DATE'], con, schema, output_log):
         dup_ban_lock=True
-        writelog("WARNING: DUPLICATE BAN - ACNA="+current_abbd_rec_key['ACNA']+", BAN="+current_abbd_rec_key['BAN']+", EOB_DATE="+current_abbd_rec_key['EOB_DATE'])
+        writelog("WARNING: DUPLICATE BAN - ACNA="+current_abbd_rec_key['ACNA']+", BAN="+current_abbd_rec_key['BAN']+", EOB_DATE="+current_abbd_rec_key['EOB_DATE'], output_log)
         parent_1010_rec=False
+        current_parent_rec=''
     else:
         dup_ban_lock=False
         invalid_fgrp_lock=False
@@ -577,9 +748,9 @@ def process_TYP010100_CHILD():
         MOU_BCTFMOU_tbl['ICSC_OFC']=line[211:214].rstrip(' ').lstrip(' ')
         MOU_BCTFMOU_tbl['INPUT_RECORDS']+="*"+str(record_id)
     elif record_id=='070500':        
-        writelog("070500 RECORD")
+        writelog("070500 RECORD", output_log)
     else:
-        writelog("WARNING: INVALID 010100 CHILD - "+record_id)
+        writelog("WARNING: INVALID 010100 CHILD - "+record_id, output_log)
 
 
 def process_TYP3505_PARENT():
@@ -589,19 +760,21 @@ def process_TYP3505_PARENT():
     global curr_RE
     global parent_3505_rec
     global current_ZCIC
+    global current_TACCT_FGRP
     global current_abbd_rec_key
     global current_parent_rec
+    global abbdLst
+    global abbdcLst
+    global abbdcrecicjdLst
+    
+    curr_RE       = line[227:229] + line[118:120] + line[179:180] + line[123:124] + line[178:179] + line[180:181] + line[120:121] + line[221:222] + line[177:178] + ' ' +line[122:123] + line[207:208] + line[121:122] + line[176:177] + line[192:193]            
          
     if line[176:177] != '0':
-        count_record("350500_SKIPPED",False)
+        count_record("350500_IND12_SKIPPED",False)
         parent_3505_rec=False        
+        current_parent_rec=''
     else:
         initialize_DTLREC_tbl()     
-        #RE =    RID1  |   RE1   |   IND1  |   IND2  |   IND3  |   IND4  |   IND5  |   IND6  |  IND7   |IND8|  IND9  |  IND10  |   IND11 |   IND12 |  IND13;
-        #RE = [227:229]|[118:120]|[179:180]|[123:124]|[178:179]|[180:181]|[120:121]|[221:222]|[177:178]|' '|[122:123]|[207:208]|[121:122]|[176:177]|[192:193];
-        #QCIC
-        curr_RE=line[227:229] + line[118:120] + line[179:180] + line[123:124] + line[178:179] + line[180:181] + line[120:121] + line[221:222] + line[177:178] + ' ' +line[122:123] + line[207:208] + line[121:122] + line[176:177] + line[192:193]        
-        #Populate fields for RateRec and map for the 350501 recs to use
         MOU_DTLREC_tbl['CLLI']=line[61:72]
         MOU_DTLREC_tbl['RE']=curr_RE         
         current_record_num=line[108:118]
@@ -618,19 +791,13 @@ def process_TYP3505_PARENT():
         if current_TACCT_FGRP == '1':
             MOU_DTLREC_tbl['CIC']=' '
             current_record_num=line[108:118]
-        #elif QCIC != ' ':
-        #    MOU_RATEREC_tbl['CIC']=' '
         else:
             MOU_DTLREC_tbl['CIC']=current_ZCIC
             current_record_num=' '
         
-        ##########  ISSUE
-        # RCD=' '
-        # RCDA/I6YMD=EDIT(RCD);
-        # RCDB/YMD=RCDA;
-        # RCDCC=RCDB;
-        #   RCDCC is a date field but the value is always defauled to ' '
-        #########  For now just always leave RCDCC blank/null
+        # RCDCC is a date field but the value is always defauled to ' ' because of BOS Version number
+        # So just always leave RCDCC blank/null
+        
         MOU_DTLREC_tbl['JRSDN_CD']=line[224:225]
         MOU_DTLREC_tbl['NAT_REG']='0'
         MOU_DTLREC_tbl['EO_TANDIND']=line[72:73]
@@ -669,7 +836,7 @@ def process_TYP3505_CHILD():
     
     if parent_3505_rec != True:
         count_record("350501_NO_PARENT",False)
-        writelog("Record - " + str(inputLineCnt) + " - 350501 - Has no 350500 parent")
+        writelog("Record - " + str(inputLineCnt) + " - 350501 - Has no 350500 parent", output_log)
     else:      
         MOU_DTLREC_tbl['RCI']=line[87:88]
         MOU_DTLREC_tbl['PARFROMDTCC']=line[88:96]
@@ -686,29 +853,33 @@ def process_TYP351000():
     global line
     global record_id
     global MOU_DTLREC_tbl    
+    global current_abbd_rec_key    
     global curr_RE    
-    global current_parent_rec
     global current_TACCT_FGRP
+    global current_parent_rec
+    global parent_3510_rec
+    global abbdLst
+    global abbdcLst
+    global abbdcrecicjdLst
     
-    #IND12 - line[95:96]
+    curr_RE       = line[227:229] + line[82:84] + line[115:116] + line[85:86] + line[86:87] + line[87:88] + line[88:89] + line[94:95] + line[90:91] + line[91:92] + line[92:93] + line[93:94] + line[190:191] + line[95:96] + line[96:97]
+    curr_jur_code = line[224:225]
+    
     if line[95:96] != '0':
         count_record("351000_SKIPPED",False)
+        parent_3510_rec=False
+        current_parent_rec=''
     else:
         initialize_DTLREC_tbl()     
-        #RE =    RID1  |  RE1  |   IND1  |  IND2 |  IND3 |  IND4 |  IND5 |  IND6 |  IND7 |  IND8 |  IND9 | IND10 |  IND11  | IND12 | IND13
-        #RE = [227:229]|[82:84]|[115:116]|[85:86]|[86:87]|[87:88]|[88:89]|[94:95]|[90:91]|[91:92]|[92:93]|[93:94]|[190:191]|[95:96]|[96:97]
         curr_RE=line[227:229] + line[82:84] + line[115:116] + line[85:86] + line[86:87] + line[87:88] + line[88:89] + line[94:95] + line[90:91] + line[91:92] + line[92:93] + line[93:94] + line[190:191] + line[95:96] + line[96:97]
-        #
         current_record_num=line[72:82]        
         if current_TACCT_FGRP == '1':
             current_record_num=line[72:82]
         else:            
             current_record_num=' '
-        #        
         currTSTP=line[208:211]
         if currTSTP == '999':
             currTSTP=' '        
-        #
         MOU_DTLREC_tbl['CLLI']=line[61:72]
         MOU_DTLREC_tbl['RECORD_NUM']=current_record_num
         MOU_DTLREC_tbl['RE']=curr_RE
@@ -729,7 +900,7 @@ def process_TYP351000():
         MOU_DTLREC_tbl['SP_TRAN_PCT']=currTSTP               
         MOU_DTLREC_tbl['ST_LV_CC']=line[211:215]        
         MOU_DTLREC_tbl['EO_TANDIND']=line[223:224]
-        MOU_DTLREC_tbl['JRSDN_CD']=line[224:225]
+        MOU_DTLREC_tbl['JRSDN_CD']=curr_jur_code
         MOU_DTLREC_tbl['INPUT_RECORDS']=str(record_id)
         
         #DEFAULTED VALUE COLUMNS        
@@ -742,6 +913,7 @@ def process_TYP351000():
         MOU_DTLREC_tbl['TANDM_CLLI']=' '
         MOU_DTLREC_tbl['BIP']=' '
         MOU_DTLREC_tbl['LTL_IDENTIF']=' '
+        MOU_DTLREC_tbl['TERM_CLLI']= inputLineCnt
           
         current_parent_rec="351000"
 
@@ -749,32 +921,32 @@ def process_TYP351500():
     global line
     global record_id
     global MOU_DTLREC_tbl    
+    global parent_3515_rec
+    global current_abbd_rec_key      
     global curr_RE    
     global current_parent_rec
     global current_TACCT_FGRP
+    global abbdLst
+    global abbdcLst
+    global abbdcrecicjdLst
      
-    #IND12 - line[93:94]
     if line[93:94] != '0':
         count_record("351500_SKIPPED",False)
+        parent_3515_rec=False
+        current_parent_rec=''
     else:
-        
-        #RE =    RID1  |  RE1  |  IND1 |  IND2 |  IND3 |  IND4 |  IND5 |  IND6 |  IND7 |  IND8 |  IND9 | IND10 | IND11 | IND12 | IND13
-        #RE = [227:229]|[82:84]|[84:85]|[85:86]|[86:87]|  ' '  |  ' '  |[89:90]|  ' '  |  ' '  |  ' '  |  ' '  |[92:93]|[93:94]|[94:95]
-
+        initialize_DTLREC_tbl()
+        curr_CLLI     = line[61:72]
         curr_RE=line[227:229] + line[82:84] + line[84:85] + line[85:86] + line[86:87] + ' ' + ' ' + line[89:90] + ' ' + ' ' + ' ' + ' ' + line[92:93] + line[93:94] + line[94:95]
-        #
+        curr_CIC      = line[203:208]
+        curr_jur_code = line[224:225]
         current_record_num=line[72:82]        
         if current_TACCT_FGRP == '1':
             current_record_num=line[72:82]
         else:            
             current_record_num=' '
-        #
-        #currTSTP=line[208:211]
-        #if currTSTP == '999':
-        #    currTSTP=' '
         currTSTP=' '
-        #        
-        MOU_DTLREC_tbl['CLLI']=line[61:72]
+        MOU_DTLREC_tbl['CLLI']=curr_CLLI
         MOU_DTLREC_tbl['RECORD_NUM']=current_record_num
         MOU_DTLREC_tbl['RE']=curr_RE
         MOU_DTLREC_tbl['RCI']=line[95:96]
@@ -787,12 +959,12 @@ def process_TYP351500():
         MOU_DTLREC_tbl['UBDFROMCC']=line[170:178]
         MOU_DTLREC_tbl['UBDTHRUCC']=line[178:186]
         MOU_DTLREC_tbl['RATE']=convertnumber(line[186:197],9)
-        MOU_DTLREC_tbl['CIC']=line[203:208]
+        MOU_DTLREC_tbl['CIC']=curr_CIC
         MOU_DTLREC_tbl['SP_TRAN_PCT']=currTSTP
         MOU_DTLREC_tbl['ST_LV_CC']=line[211:215]
         MOU_DTLREC_tbl['VOIP_USAGE_IND1']=line[215:216]
         MOU_DTLREC_tbl['EO_TANDIND']=line[223:224]
-        MOU_DTLREC_tbl['JRSDN_CD']=line[224:225]
+        MOU_DTLREC_tbl['JRSDN_CD']=curr_jur_code
         MOU_DTLREC_tbl['INPUT_RECORDS']=str(record_id)
         
         #DEFAULTED VALUE COLUMNS
@@ -819,26 +991,20 @@ def process_TYP3520_PARENT():
     global current_parent_rec
     global current_TACCT_FGRP
      
-    #IND12 - [189:190]
     if line[189:190] != '0':
         count_record("352000_SKIPPED",False)
         parent_3520_rec=False
+        current_parent_rec=''
     else:
-       
-       
-        #RE = RID1|RE1|IND1|IND2|IND3|IND4|IND5|IND6|IND7|IND8|IND9|IND10|IND11|IND12|IND13
-        #  |   RID1  |   RE1   |   IND1  |   IND2  |   IND3  |   IND4  |   IND5  |   IND6  |   IND7  |   IND8  |   IND9  |   IND10 (352001 will populate it)   |  IND11  |  IND12  |  IND13   |
-        #   [227:229]|[118:120]|[191:192]|[123:124]|[222:223]|[193:194]|[192:193]|[207:208]|[190:191]|[120:121]|[122:123]|   ' '                               |[121:122]|[189:190]|[205:206]|
+        initialize_DTLREC_tbl()
         curr_RE=line[227:229] + line[118:120] + line[191:192] + line[123:124] + line[222:223] + line[193:194] + line[192:193] + line[207:208] + line[190:191] + line[120:121] + line[122:123] + ' ' + line[121:122] + line[189:190] + line[205:206]
         curr_3520_RE_part1=line[227:229] + line[118:120] + line[191:192] + line[123:124] + line[222:223] + line[193:194] + line[192:193] + line[207:208] + line[190:191] + line[120:121] + line[122:123]
         curr_3520_RE_part2=line[121:122] + line[189:190] + line[205:206]
-        #
         current_record_num=line[108:118]                
         if current_TACCT_FGRP == '1':
             current_record_num=line[108:118]
         else:            
             current_record_num=' '
-        #
         tpiu=line[210:211] + line[211:212] + line[208:209]
         if tpiu == '999':
             MOU_DTLREC_tbl['PIU']=' '
@@ -879,7 +1045,6 @@ def process_TYP3520_CHILD():
     global curr_RE    
     global current_ZCIC
     global current_parent_rec
-    global current_TACCT_FGRP
     global parent_3520_rec
     global curr_3520_RE_part1
     global curr_3520_RE_part2
@@ -888,9 +1053,8 @@ def process_TYP3520_CHILD():
         count_record("352001_NO_PARENT",False)
         
     elif record_id=='352001':
-        #['IND10']=line[106:107]
         curr_RE= curr_3520_RE_part1 + line[106:107] + curr_3520_RE_part2       
-        #
+        
         MOU_DTLREC_tbl['RE']=curr_RE
         MOU_DTLREC_tbl['RCI']=line[86:87]
         MOU_DTLREC_tbl['IUDFROMCC']=line[108:116]
@@ -904,16 +1068,16 @@ def process_TYP3520_CHILD():
         MOU_DTLREC_tbl['CNNCTN']=line[215:216]        
         MOU_DTLREC_tbl['TDM_TRNST_I']=line[223:224]
         MOU_DTLREC_tbl['INPUT_RECORDS']+="*"+str(record_id)        
-        writelog("352001 record has " + MOU_DTLREC_tbl['INPUT_RECORDS'])
+        writelog("352001 record has " + MOU_DTLREC_tbl['INPUT_RECORDS'], output_log)
         
     elif record_id=='352002':
         MOU_DTLREC_tbl['EO_SW_ONR_ID']=line[84:88]
         MOU_DTLREC_tbl['TERM_CLLI']=line[88:99]        
         MOU_DTLREC_tbl['INPUT_RECORDS']+="*"+str(record_id)        
-        writelog("352002 record has " + MOU_DTLREC_tbl['INPUT_RECORDS'])
+        writelog("352002 record has " + MOU_DTLREC_tbl['INPUT_RECORDS'], output_log)
         
     else:
-        writelog("3520 Child record type not found")
+        writelog("3520 Child record type not found", output_log)
 
 
 def process_TYP3527_PARENT():
@@ -927,6 +1091,7 @@ def process_TYP3527_PARENT():
     if line[95:96] != '0':
         count_record("352700_SKIPPED",False)
         parent_3527_rec=False        
+        current_parent_rec=''        
     else:
         initialize_STATPG_tbl()
         
@@ -987,20 +1152,22 @@ def process_TYP3527_CHILD():
     
     if parent_3527_rec != True:
           count_record("352701_NO_PARENT",False)
-          writelog("Record - " + str(inputLineCnt) + " - 352701 - Has no 350500 parent")
+          writelog("Record - " + str(inputLineCnt) + " - 352701 - Has no 350500 parent", output_log)
 #
     elif record_id=='352701':
         MOU_STATPG_tbl['TDM_TRNI_SP']=line[121:122]
         MOU_STATPG_tbl['PCT_LO']=line[123:126]
         MOU_STATPG_tbl['EXP_PIU']=convertnumber(line[157:162],2)
         MOU_STATPG_tbl['INPUT_RECORDS']+="*"+str(record_id)
-        MOU_STATPG_tbl
 #
     elif record_id=='352702':
         #MOU_STATPG_tbl['PCT_INET_BD'] = IF VERSION_NBR GE 39 THEN (EDIT(APCT_TRAF)) * .01 ELSE 0.00;
+        #MOU_STATPG_tbl['PCT_INET_BD'] = "0"
+        MOU_STATPG_tbl['PCT_INET_BD']=convertnumber(line[108:113],2);
+        
         #MOU_STATPG_tbl['PRCNT_VOIP_USGE'] = IF VERSION_NBR GE 51 THEN (EDIT(APVU)) * .01 ELSE 0.00;
-        MOU_STATPG_tbl['PCT_INET_BD'] = "0";
-        MOU_STATPG_tbl['PRCNT_VOIP_USGE'] = "0";
+        #MOU_STATPG_tbl['PRCNT_VOIP_USGE'] = "0";
+        MOU_STATPG_tbl['PRCNT_VOIP_USGE']=convertnumber(line[88:93],2);
         
         MOU_STATPG_tbl['PCT_TRA_LOC']=line[84:87]
         MOU_STATPG_tbl['VOIP_USAGE_IND']=line[87:88]
@@ -1020,24 +1187,304 @@ def process_TYP3527_CHILD():
     elif record_id=='352750':
         
         #MOU_STATPG_tbl['PRCNT_VOIP_USGE_C'] = IF VERSION_NBR GE 51 THEN (EDIT(APVUC)) * .01 ELSE 0.00;
+        #MOU_STATPG_tbl['PRCNT_VOIP_USGE_C'] = "0"
+        MOU_STATPG_tbl['PRCNT_VOIP_USGE_C'] = convertnumber(line[87:92],2);
+        
         #MOU_STATPG_tbl['PRCNT_VOIP_USGE_P'] = IF VERSION_NBR GE 51 THEN (EDIT(APVUP)) * .01 ELSE 0.00;        
-        MOU_STATPG_tbl['PRCNT_VOIP_USGE_C'] = "0"
-        MOU_STATPG_tbl['PRCNT_VOIP_USGE_P'] = "0"     
+        #MOU_STATPG_tbl['PRCNT_VOIP_USGE_P'] = "0" 
+        MOU_STATPG_tbl['PRCNT_VOIP_USGE_P'] = convertnumber(line[92:97],2);    
         
         #MOU_STATPG_tbl['APVUC']=line[87:92]
         #MOU_STATPG_tbl['APVUP']=line[92:97]
         MOU_STATPG_tbl['INPUT_RECORDS']+="*"+str(record_id)
     else:
-        writelog("3527 Child record type not found")
+        writelog("3527 Child record type not found", output_log)
 
+def process_TYP390500():
+    global line
+    global record_id
+    global MOU_DTLREC_tbl    
+    global curr_RE
+    global parent_3905_rec
+    global current_ZCIC
+    global current_TACCT_FGRP
+    global current_abbd_rec_key
+    global current_parent_rec
+    global abbdLst
+    global abbdcLst
+    global abbdcrecicjdLst
+
+    curr_RE = line[227:229] + line[97:99] + line[155:156] + line[103:104] + ' ' + ' ' + line[99:100] + ' ' + line[102:103] + ' ' + ' ' + ' ' + line[100:101] + line[154:155] + line[180:181]
     
+    if line[154:155] != '0':
+        count_record("390500_IND12_SKIPPED",False)
+        parent_3905_rec=False
+        current_parent_rec=''
+    else:
+        initialize_DTLREC_tbl()        
+
+        MOU_DTLREC_tbl['RE']=curr_RE
+        MOU_DTLREC_tbl['CLLI']=line[61:72]
+    
+        if current_TACCT_FGRP == '1':
+            MOU_DTLREC_tbl['CIC']=' '
+            current_record_num=line[214:224]
+        else:
+            MOU_DTLREC_tbl['CIC']=current_ZCIC
+            current_record_num=' '       
+      
+        MOU_DTLREC_tbl['JRSDN_CD']=line[224:225]
+        MOU_DTLREC_tbl['NAT_REG']='0'        
+        MOU_DTLREC_tbl['EO_TANDIND']=line[72:73]
+        MOU_DTLREC_tbl['RATPT1']=line[73:84]
+        MOU_DTLREC_tbl['RATPT1IND']=line[84:85]
+        MOU_DTLREC_tbl['RATPT2']=line[85:96]
+        MOU_DTLREC_tbl['RATPT2IND']=line[96:97]        
+        MOU_DTLREC_tbl['RECORD_NUM']=current_record_num
+        MOU_DTLREC_tbl['AMILE']=line[104:107]
+        MOU_DTLREC_tbl['QUANT']=convertnumber(line[107:118],0)
+        MOU_DTLREC_tbl['RATE']=convertnumber(line[118:127],9)
+        MOU_DTLREC_tbl['AMOUNT']=convertnumber(line[127:138],2)
+        MOU_DTLREC_tbl['UBDFROMCC']=line[138:146]
+        MOU_DTLREC_tbl['UBDTHRUCC']=line[146:154]
+        MOU_DTLREC_tbl['SP_TRAN_PCT']=' '
+        MOU_DTLREC_tbl['ST_ID']=line[156:158]
+        MOU_DTLREC_tbl['ST_LV_CC']=line[158:162]
+        MOU_DTLREC_tbl['BIP']=' '
+        MOU_DTLREC_tbl['PIU']=' '
+        MOU_DTLREC_tbl['RCI']=line[163:164]
+        MOU_DTLREC_tbl['PARFROMDTCC']=line[164:172]
+        MOU_DTLREC_tbl['PARTHRUDTCC']=line[172:180]
+        MOU_DTLREC_tbl['MLTPL_SW_IND']=line[200:201]
+        MOU_DTLREC_tbl['UNB_TRM_MPLR']=line[201:202]
+        MOU_DTLREC_tbl['MLTPL_NTWK_I']=line[202:203]
+        MOU_DTLREC_tbl['TANDM_CLLI']=line[203:214]        
+        MOU_DTLREC_tbl['INPUT_RECORDS']=str(record_id)
+        MOU_DTLREC_tbl['QRCI']='5'
+        # RCDCC is a date field but the value is always defauled to ' ' because of BOS Version number
+        # So default the RCDCC to blank/null
+        MOU_DTLREC_tbl['RCDCC']=''
+
+        parent_3905_rec=True
+        current_parent_rec="390500"
+
+def process_TYP391000():
+    global line
+    global record_id
+    global MOU_DTLREC_tbl    
+    global curr_RE
+    global parent_3910_rec
+    global current_ZCIC
+    global current_TACCT_FGRP
+    global current_abbd_rec_key
+    global current_parent_rec
+    global abbdLst
+    global abbdcLst
+    global abbdcrecicjdLst
+
+    curr_RE = line[227:229] + line[83:85] + line[86:87] + line[137:138] + ' ' + ' ' + ' ' + line[89:90] + ' ' + ' ' + ' ' + ' ' + line[87:88] + line[138:139] + line[145:146]
+    
+    if line[138:139] != '0':
+        count_record("391000_IND12_SKIPPED",False)
+        parent_3910_rec=False
+        current_parent_rec=''
+    else:
+        initialize_DTLREC_tbl()        
+
+        MOU_DTLREC_tbl['RE']=curr_RE
+        MOU_DTLREC_tbl['CLLI']=line[61:72]
+        
+        if current_TACCT_FGRP == '1':            
+            current_record_num=line[214:224]
+        else:            
+            current_record_num=' '       
+      
+        MOU_DTLREC_tbl['JRSDN_CD']=line[224:225]
+        MOU_DTLREC_tbl['QUANT']=convertnumber(line[90:101],0)
+        MOU_DTLREC_tbl['RATE']=convertnumber(line[101:110],9)
+        MOU_DTLREC_tbl['AMOUNT']=convertnumber(line[110:121],2)
+        MOU_DTLREC_tbl['EO_TANDIND']=line[72:73]                    
+        MOU_DTLREC_tbl['RECORD_NUM']=current_record_num
+        MOU_DTLREC_tbl['MLTPL_NTWK_I']=line[167:168]
+        MOU_DTLREC_tbl['MLTPL_SW_IND']=line[166:167]            
+        MOU_DTLREC_tbl['PARFROMDTCC']=line[147:155]
+        MOU_DTLREC_tbl['PARTHRUDTCC']=line[155:163]            
+        MOU_DTLREC_tbl['RCI']=line[146:147]            
+        MOU_DTLREC_tbl['ST_ID']=line[139:141]
+        MOU_DTLREC_tbl['ST_LV_CC']=line[141:145]
+        MOU_DTLREC_tbl['TRECORD_NUM']=line[214:224]
+        MOU_DTLREC_tbl['UBDFROMCC']=line[121:129]
+        MOU_DTLREC_tbl['UBDTHRUCC']=line[129:137]
+        MOU_STATPG_tbl['INPUT_RECORDS']=str(record_id)
+        #DEFAULTED VALUES
+        MOU_DTLREC_tbl['PIU']=' '
+        MOU_DTLREC_tbl['CIC']=' ' #ANUM IN FOCUS JOB
+        MOU_DTLREC_tbl['LTL_IDENTIF']=' ' #LTL IN FOCUS JOB
+        MOU_DTLREC_tbl['AMILE']=' '
+        MOU_DTLREC_tbl['TERM_CLLI']=' '
+        MOU_DTLREC_tbl['TANDM_CLLI']=' '
+        MOU_DTLREC_tbl['BIP']=' '
+        MOU_DTLREC_tbl['SP_TRAN_PCT']=' ' #STP IN FOCUS JOB
+        MOU_DTLREC_tbl['QRCI']='T'
+        MOU_DTLREC_tbl['NAT_REG']='0'
+        
+        
+        parent_3910_rec=True
+        current_parent_rec="391000"
+
+def process_TYP392000():
+    global line
+    global record_id
+    global MOU_DTLREC_tbl    
+    global curr_RE
+    global parent_3920_rec
+    global current_ZCIC
+    global current_TACCT_FGRP
+    global current_abbd_rec_key
+    global current_parent_rec
+    
+    curr_RE = line[227:229] + line[97:99] + line[159:160] + line[154:155] + ' ' + line[185:186] + ' ' + line[187:188] + line[153:154] + line[150:151] + line[152:153] + ' ' + line[151:152] + line[158:159] + line[207:208]
+    
+    if line[158:159] != '0':
+        count_record("392000_IND12_SKIPPED",False)
+        parent_3920_rec=False
+        current_parent_rec=''
+    else:
+        initialize_DTLREC_tbl()        
+
+        MOU_DTLREC_tbl['RE']=curr_RE
+        MOU_DTLREC_tbl['CLLI']=line[61:72]
+        
+        if current_TACCT_FGRP == '1':            
+            current_record_num=line[214:224]
+        else:            
+            current_record_num=' '
+        
+        #TPIU = TPIU_A|TPIU_B|TPIU_C
+        tpiu=line[194:195] + line[186:187] + line[188:189]        
+        if tpiu == '999':
+            MOU_DTLREC_tbl['PIU']=' '
+        else:
+            MOU_DTLREC_tbl['PIU']=tpiu
+      
+        MOU_DTLREC_tbl['ST_ID']=line[160:162]        
+        MOU_DTLREC_tbl['AMILE']=line[155:158]
+        MOU_DTLREC_tbl['AMOUNT']=convertnumber(line[123:134],2)
+        MOU_DTLREC_tbl['EO_TANDIND']=line[72:73]        
+        MOU_DTLREC_tbl['JRSDN_CD']=line[224:225]        
+        MOU_DTLREC_tbl['PARFROMDTCC']=line[169:177]
+        MOU_DTLREC_tbl['PARTHRUDTCC']=line[177:185]
+        MOU_DTLREC_tbl['QUANT']=convertnumber(line[99:110],0)
+        MOU_DTLREC_tbl['RATE']=convertnumber(line[110:123],9)
+        MOU_DTLREC_tbl['RCI']=line[168:169]        
+        MOU_DTLREC_tbl['ST_LV_CC']=line[162:166]        
+        MOU_DTLREC_tbl['RECORD_NUM']=current_record_num
+        MOU_DTLREC_tbl['UBDFROMCC']=line[134:142]
+        MOU_DTLREC_tbl['UBDTHRUCC']=line[142:150]
+        MOU_STATPG_tbl['INPUT_RECORDS']=str(record_id)
+        #DEFAULTED VALUES        
+        MOU_DTLREC_tbl['CIC']=' ' #ANUM IN FOCUS JOB        
+        MOU_DTLREC_tbl['TERM_CLLI']=' '
+        MOU_DTLREC_tbl['TANDM_CLLI']=' '        
+        MOU_DTLREC_tbl['BIP']=' '        
+        MOU_DTLREC_tbl['QRCI']='2'
+        
+        parent_3920_rec=True
+        current_parent_rec="392000"
+
+def process_TYP3927_PARENT():
+    global line
+    global record_id
+    global MOU_STATPG_tbl
+    global parent_3927_rec
+    global current_parent_rec
+    
+    #SUB_TOT_IND line[207:208]
+    if line[207:208] != '0':
+        count_record("392700_SKIPPED",False)
+        parent_3927_rec=False
+        current_parent_rec=''        
+    else:
+        initialize_STATPG_tbl()
+        MOU_STATPG_tbl['CLLI']=line[61:72]
+        MOU_STATPG_tbl['REC_NUM']=line[214:224]
+        MOU_STATPG_tbl['ATTEMPTS']=convertnumber(line[147:152],4)
+        MOU_STATPG_tbl['DA_800_IND']=line[175:176]
+        MOU_STATPG_tbl['DIR_TANDIND']=line[91:92]
+        MOU_STATPG_tbl['EO_TAND_IND']=line[72:73]
+        MOU_STATPG_tbl['FACT_#MESG']=convertnumber(line[136:147],0)
+        MOU_STATPG_tbl['FACTOR_MOU']=convertnumber(line[114:125],0)
+        MOU_STATPG_tbl['FROMDATECC']=line[75:83]
+        MOU_STATPG_tbl['JURIS_IND']=line[224:225]
+        MOU_STATPG_tbl['MOU_ATTEMPT']=convertnumber(line[152:157],4)
+        MOU_STATPG_tbl['NBR_MESG']=convertnumber(line[103:114],0)
+        MOU_STATPG_tbl['NCTA_AP_IND']=line[173:174]
+        MOU_STATPG_tbl['NCTA_FACTOR']=convertnumber(line[157:162],4)
+        MOU_STATPG_tbl['NCTA_TT_IND']=line[171:172]
+        MOU_STATPG_tbl['PCT_INTERST']=convertnumber(line[176:179],0)
+        MOU_STATPG_tbl['PCT_TERTER']=convertnumber(line[185:188],0)
+        MOU_STATPG_tbl['PCT_TRA_IND']=line[172:173]
+        MOU_STATPG_tbl['PCT_TRATER']=convertnumber(line[179:182],0)
+        MOU_STATPG_tbl['PCT_TRATRA']=convertnumber(line[182:185],0)
+        MOU_STATPG_tbl['POT_TRAN_IND']=line[194:195]
+        MOU_STATPG_tbl['REC_MIN_IND']=line[170:171]
+        MOU_STATPG_tbl['RECORD_MOU']=convertnumber(line[92:103],0)
+        MOU_STATPG_tbl['ST_CO_CODE']=line[203:207]
+        MOU_STATPG_tbl['STATE']=line[201:203]
+        MOU_STATPG_tbl['STATS_ELEM']=line[73:75]
+        MOU_STATPG_tbl['SUB_TOT_IND']=line[207:208]
+        MOU_STATPG_tbl['TERM_ORG_RAT']=convertnumber(line[162:169],6)
+        MOU_STATPG_tbl['THRUDATECC']=line[83:91]
+        MOU_STATPG_tbl['VERT_FEATIND']=line[195:196]
+        MOU_STATPG_tbl['INPUT_RECORDS']=str(record_id)
+
+        parent_3927_rec=True
+        current_parent_rec="392700"
+
+def process_TYP3927_CHILD():
+    global line
+    global record_id
+    global MOU_STATPG_tbl
+    global parent_3927_rec
+    
+    if parent_3927_rec != True:
+          count_record("392701_NO_PARENT",False)
+          writelog("Record - " + str(inputLineCnt) + " - 392701 - Has no 392700 parent", output_log)
+#
+    elif record_id=='392701':
+        MOU_STATPG_tbl['RFB_CHG_IND']=line[78:79]
+        MOU_STATPG_tbl['U28PARFROMCC']=line[79:87]
+        MOU_STATPG_tbl['U28PARTHRUCC']=line[87:95]
+        MOU_STATPG_tbl['U28_800CLIND']=line[95:96]
+        MOU_STATPG_tbl['U28_CL_FCTR']=convertnumber(line[96:105],8)
+        MOU_STATPG_tbl['U28_NCL_MOU']=convertnumber(line[105:116],0)
+        MOU_STATPG_tbl['U28_CL_MOU']=convertnumber(line[116:127],0)
+        MOU_STATPG_tbl['U28_CRCD_MOU']=convertnumber(line[127:138],0)
+        MOU_STATPG_tbl['U28_CRCD_FTR']=convertnumber(line[138:147],8)
+        MOU_STATPG_tbl['U28_NCC_MOU']=convertnumber(line[147:158],0)
+        MOU_STATPG_tbl['U28_DIRRTG']=convertnumber(line[158:163],4)
+        MOU_STATPG_tbl['U28_ISW_FCTR']=convertnumber(line[173:178],4)
+        MOU_STATPG_tbl['U28_LTR_API']=line[178:179]
+        MOU_STATPG_tbl['U28_ISW_TMOU']=convertnumber(line[180:191],0)
+        MOU_STATPG_tbl['U28_ISW_DMOU']=convertnumber(line[191:202],0)
+        #        
+        #ATDM_SWPCT=line[170:173]
+        #U28_TDM_SPCT = IF VERSION_NBR GE 39 THEN (EDIT(ATDM_SWPCT)) ELSE 0;
+        MOU_STATPG_tbl['U28_TDM_SPCT']=convertnumber(line[170:173],0)
+        
+        MOU_STATPG_tbl['INPUT_RECORDS']+="*"+str(record_id)        
+#
+    else:
+        writelog("3927 Child record type not found", output_log)
 
 def initialize_DTLREC_tbl():    
     global MOU_DTLREC_tbl
+#    global mou_version
 
     MOU_DTLREC_tbl['ACNA']=current_abbd_rec_key['ACNA']
     MOU_DTLREC_tbl['EOB_DATE']=current_abbd_rec_key['EOB_DATE']
     MOU_DTLREC_tbl['BAN']=current_abbd_rec_key['BAN']
+#    MOU_DTLREC_tbl['MOU_VERSION']=mou_version
 
     MOU_DTLREC_tbl['CLLI']=''
     MOU_DTLREC_tbl['RCI']=''
@@ -1079,28 +1526,15 @@ def initialize_DTLREC_tbl():
     MOU_DTLREC_tbl['RATPT2IND']=''
     MOU_DTLREC_tbl['VOIP_USAGE_IND1']=''
 
-
-
-def initialize_RATEREC_tbl():
-    global MOU_RATEREC_tbl
-   
-    MOU_RATEREC_tbl['ACNA']=current_abbd_rec_key['ACNA']
-    MOU_RATEREC_tbl['EOB_DATE']=current_abbd_rec_key['EOB_DATE']
-    MOU_RATEREC_tbl['BAN']=current_abbd_rec_key['BAN']   
-    MOU_RATEREC_tbl['CLLI']=''
-    
-    MOU_RATEREC_tbl['RE']=''
-    MOU_RATEREC_tbl['CIC']=''
-    MOU_RATEREC_tbl['JRSDN_CD']=''
-    MOU_RATEREC_tbl['NAT_REG']=''
-     
 def  initialize_STATPG_tbl():
     global MOU_BCTFMOU_tbl
     global current_abbd_rec_key 
+#    global mou_version
     
     MOU_STATPG_tbl['ACNA']=current_abbd_rec_key['ACNA']    
     MOU_STATPG_tbl['EOB_DATE']=current_abbd_rec_key['EOB_DATE']
     MOU_STATPG_tbl['BAN']=current_abbd_rec_key['BAN']   
+#    MOU_STATPG_tbl['MOU_VERSION']=mou_version
     MOU_STATPG_tbl['CLLI']=''
     
     MOU_STATPG_tbl['REC_NUM']=''
@@ -1183,11 +1617,12 @@ def  initialize_STATPG_tbl():
 def  initialize_BCTFMOU_tbl():
     global MOU_BCTFMOU_tbl
     global current_abbd_rec_key 
+#    global mou_version
     
     MOU_BCTFMOU_tbl['ACNA']=current_abbd_rec_key['ACNA']    
     MOU_BCTFMOU_tbl['EOB_DATE']=current_abbd_rec_key['EOB_DATE']
     MOU_BCTFMOU_tbl['BAN']=current_abbd_rec_key['BAN']
-
+#    MOU_BCTFMOU_tbl['MOU_VERSION']=mou_version
     MOU_BCTFMOU_tbl['BILL_DATE']=''
     MOU_BCTFMOU_tbl['MPB']=''
     MOU_BCTFMOU_tbl['TLF']=''
@@ -1210,185 +1645,21 @@ def  initialize_BCTFMOU_tbl():
     MOU_BCTFMOU_tbl['UNB_SWA_PROV']=''
     MOU_BCTFMOU_tbl['MAN_BAN_TYPE']=''
     
-def format_date(datestring):
-    dtSize=len(datestring)
-    
-    if dtSize ==5:
-        #jdate conversion
-        return "TO_DATE('"+datestring+"','YY-DDD')"
-    elif dtSize==6:
-        return "TO_DATE('"+datestring[4:6]+"-"+MONTH_DICT[datestring[2:4]]+"-"+"20"+datestring[:2]+"','DD-MON-YY')"  
-    elif dtSize==8:
-        return "TO_DATE('"+datestring[:4]+"-"+datestring[4:6]+"-"+"20"+datestring[6:2]+"','YYYY-MM-DD')"
- 
- 
-    
-def process_insert_table(tbl_name, tbl_rec,tbl_dic):
-        
-    firstPart="INSERT INTO "+tbl_name+" (" #add columns
-    secondPart=" VALUES ("  #add values
-    writelog("GETTING VALUES FOR INSERT ")
-    for key, value in tbl_rec.items() :
-        nulVal=False
-        if str(value).rstrip(' ') == '':
-            nulVal=True
-#             "EMPTY VALUE"
-    
-        try:
-            if tbl_dic[key] == 'STRING':
-                firstPart+=key+","
-                if nulVal:
-                    secondPart+="NULL,"
-                else:
-                    secondPart+="'"+str(value).rstrip(' ')+"',"
-            elif tbl_dic[key] =='DATETIME':
-                firstPart+=key+","
-                if nulVal:
-                    secondPart+="NULL,"
-                else:                    
-                    secondPart+=format_date(value)+","
-            elif tbl_dic[key] =='NUMBER':
-                firstPart+=key+","
-                "RULE: if null/blank number, then populate with 0."
-                if nulVal:
-                    secondPart+="0,"
-                else:                    
-                    secondPart+=str(value)+","                    
-            else:
-                print "ERROR:" +tbl_dic[key]
-        except KeyError as e:
-            writelog("WARNING: Column "+key+" not found in the "+tbl_name+" table.  Skipping.")
-            writelog("KeyError:"+e.message)
-    writelog("END GETTING VALUES FOR INSERT ")
-    firstPart=firstPart.rstrip(',')+")"     
-    secondPart=secondPart.rstrip(',') +")"      
-     
-    insCurs=con.cursor()
-    insSQL=firstPart+secondPart
-    writelog("START INSERT")
-    try:
-        insCurs.execute(insSQL) 
-        con.commit()
-        writelog("SUCCESSFUL INSERT INTO "+tbl_name+".")
-    except cx_Oracle.DatabaseError , e:
-        if ("%s" % e.message).startswith('ORA-00001:'):
-            writelog("****** DUPLICATE INSERT INTO"+str(tbl_name)+"*****************")
-            writelog("Insert SQL: "+str(insSQL))
-        else:
-            writelog("ERROR:"+str(e.message))
-            writelog("SQL causing problem:"+insSQL)
-    finally:
-        insCurs.close()
-        writelog("END INSERT")
-
-def convertnumber(num, decimalPlaces) :
-    global record_id    
-#   0000022194F
-#   0000000000{
-#   00000000000
-#    writelog("number in :"+str(num))
-    isNegative=False
-    lastdigit="0"
-    lastStr=num[-1:]
-    if lastStr in NEGATIVE_NUMS:
-        isNegative=True
-        lastdigit=DIGIT_DICT[str(lastStr)]
-    else:
-        isNegative=False
-        lastdigit=DIGIT_DICT[str(lastStr)]
-        
-    newNum=num[:len(str(num))-1]+lastdigit
-    
-    if newNum.isdigit() and decimalPlaces==0:
-        if str(newNum).lstrip('0')=='':
-            return "0"
-        else:
-            return str(newNum).lstrip('0')
-    
-    if newNum.isdigit():        
-        rightPart=str(newNum)[-decimalPlaces:]
-        leftPart=str(newNum)[:len(str(newNum))-decimalPlaces]    
-        if str(leftPart).lstrip('0')=='':
-            leftPart="0."
-        else:
-            leftPart=str(leftPart).lstrip('0')+"."
-            
-        if isNegative==True:
-            leftPart="-"+leftPart
-        
-        return leftPart+rightPart
-    else:
-        process_ERROR_END("ERROR: Cant Convert Number: "+str(num) +"   from line:"+str(line))
-
-
-
-def getTableColumns(tablenm):             
-    myCurs=con.cursor()
-    myTbl=tablenm
-    mySQL="select * FROM %s WHERE ROWNUM=1" % (myTbl)
-    tmpArray=[]
-    try:    
-        myCurs.execute(mySQL)  
-        for x in myCurs.description:
-            tmpArray.append(x)
-        con.commit()
-    except cx_Oracle.DatabaseError, e:
-        if ("%s" % e.message).startswith('ORA-:'):
-            writelog("ERROR:"+str(exc.message))
-            writelog("SQL causing problem:"+updateSQL)
-    finally:
-        myCurs.close()
-        
-    return tmpArray  
- 
- 
- 
-def createTableTypeDict(tablenm):               
-    colTypDict= {}        
-    myArray=[]
-    myArray=getTableColumns(tablenm)
-     
-    for y in myArray:
-        colTypDict[y[0]]=str(y[1]).replace("<type 'cx_Oracle.",'').replace("'>",'') 
-
-    return colTypDict  
+#def db_record_exists(acna,ban,eob_date):
+#    params = {'acna':acna.rstrip(' '), 'ban':ban.rstrip(' '), 'eob_date':eob_date}
+#    
+#    selCur = con.cursor()
+#    selCur.execute("SELECT count(*) FROM caims_mou_bctfmou WHERE acna=:acna AND ban=:ban AND eob_date=TO_DATE(:eob_date,'YYMMDD')", params)
+#    if selCur.fetchone()[0] > 0:
+#        selCur.close()
+#        return True
+#    selCur.close()
+#    return False
     
 "########################################################################################################################"
 "####################################TRANSLATION MODULES#################################################################"
 
-def translate_TACCNT_FGRP(taccnt,tfgrp):        
-    if taccnt.rstrip(' ')=='S':
-        if tfgrp.rstrip(' ') == 'A':
-            return '1'
-        elif tfgrp.rstrip(' ') == 'B':
-            return '2'
-        elif tfgrp.rstrip(' ') == 'C':
-            return '3'  
-        elif tfgrp.rstrip(' ') == 'D':
-            return '4'            
-        elif tfgrp.rstrip(' ') == 'E':
-            return '5'            
-        elif tfgrp.rstrip(' ') == 'G':
-            return '6'            
-        elif tfgrp.rstrip(' ') == 'L':
-            return '7'            
-        elif tfgrp.rstrip(' ') == 'Q':
-            return '8'            
-        elif tfgrp.rstrip(' ') == 'S':
-            return '9'            
-        elif tfgrp.rstrip(' ') == 'T':
-            return 'Z'            
-        elif tfgrp.rstrip(' ') == 'V':
-            return 'Y'            
-        else:
-            return taccnt.rstrip(' ')
-    else:
-        return tfgrp.rstrip(' ')
-#  TACCNT_FGRP=IF TACCNT EQ 'S' THEN DECODE TFGRP(
-#              'A' '1' 'B' '2' 'C' '3' 'D' '4' 'E' '5' 'G' '6'
-#              'L' '7' 'Q' '8' 'S' '9' 'T' 'Z' 'V' 'Y' ELSE '$') ELSE
-#              TACCNT;    
-#   
+   
 def count_record(currec,unknownRec):
     global record_counts
     global unknown_record_counts
@@ -1404,7 +1675,77 @@ def count_record(currec,unknownRec):
         else:
             record_counts[str(currec).rstrip(' ')]=1 
     
+def process_insertmany():
+    global mou_bctfmou_records, mou_dtlrec_records, mou_statpg_records
+    global MOU_BCTFMOU_DEFN_DICT, MOU_DTLREC_DEFN_DICT, MOU_STATPG_DEFN_DICT    
+    global con
+    global output_log
+    global schema
+    global cntr, rows, insql, results, inscnt
+    global bctfmou_cnt, dtlrec_cnt, statpg_cnt
     
+    results={}
+    selCur = con.cursor()
+
+    cntr=0
+    rows=[]
+    insql=""
+    inscnt=0
+   
+    if len(mou_bctfmou_records) > 0:
+        for key, value in mou_bctfmou_records.items():
+            inscnt+=1
+            tmpResult=process_insert_many_table("CAIMS_MOU_BCTFMOU", value, MOU_BCTFMOU_DEFN_DICT,con,schema, 'SQ_CSR_BCCBSPL',output_log)        
+            results=copy.deepcopy(tmpResult)
+            prepareInsert(value)
+        selCur.prepare(str(insql))
+        selCur.executemany(None, rows)
+        con.commit()      
+        resetVals()
+
+    if len(mou_dtlrec_records) > 0:
+        for key, value in mou_dtlrec_records.items():
+            inscnt+=1
+            tmpResult=process_insert_many_table("CAIMS_MOU_DTLREC", value, MOU_DTLREC_DEFN_DICT,con,schema, 'SQ_CSR_ACTLREC',output_log)        
+            results=copy.deepcopy(tmpResult)
+            prepareInsert(value)
+        selCur.prepare(str(insql))
+        selCur.executemany(None, rows)
+        con.commit()      
+        resetVals()        
+    
+    if len(mou_statpg_records) > 0:  
+        for key, value in mou_statpg_records.items():       
+            tmpResult=process_insert_many_table("CAIMS_MOU_STATPG", value, MOU_STATPG_DEFN_DICT,con,schema, 'SQ_CSR_BILLREC',output_log)        
+            results=copy.deepcopy(tmpResult)
+            prepareInsert(value)
+        selCur.prepare(str(insql))
+        selCur.executemany(None, rows)
+        con.commit()      
+        resetVals()
+         
+
+    selCur.close()
+    
+    mou_bctfmou_records={}
+    mou_dtlrec_records={}
+    mou_statpg_records={}
+
+    #writelog("Records Inserted", output_log)    
+
+def prepareInsert(val):
+    global insql,results,cntr,rows
+    if cntr==0:
+        insql=str(results['firstPart']) + " values " + str(results['bindVars'])
+        cntr+=1
+    tmpSecond=tuple(results['secondPart'])            
+    rows.append(tmpSecond)
+    #rows.append(val)
+def resetVals():
+    global cntr, rows, insql
+    cntr=0
+    rows=[]
+    insql=""
 
 "####################################TRANSLATION MODULES END ############################################################"    
 "########################################################################################################################" 
@@ -1414,78 +1755,67 @@ def process_write_program_stats():
     global record_counts
     global unknown_record_counts
     global BDT_KEY_cnt
-    writelog("\n")
+    writelog("\n", output_log)
     
     idCnt=0
-    writelog("**")
-    writelog("**Processed record IDs and counts**")
-    writelog("record_id, count")
+    writelog("**", output_log)
+    writelog("**Processed record IDs and counts**", output_log)
+    writelog("record_id, count", output_log)
     
     keylist = record_counts.keys()
     keylist.sort()
     for key in keylist:
 #        print "%s: %s" % (key, record_counts[key])   
-        writelog(str(key)+", "+str(record_counts[key]))   
+        writelog(str(key)+", "+str(record_counts[key]), output_log)   
         idCnt+=record_counts[key]       
 #    for key, value in record_counts.items():
 #        writelog(str(key)+", "+str(value))   
 #        idCnt+=value
-    writelog("\n  Total count: "+str(idCnt))
-    writelog(" ")
-    writelog("**")
+    writelog("\n  Total count: "+str(idCnt), output_log)
+    writelog(" ", output_log)
+    writelog("**", output_log)
     unkCnt=0
-    writelog( "There are "+str(len(unknown_record_counts))+" different record ID types not processed: ")    
-    writelog("**UNKNOWN record IDs and counts**")
-    writelog("record_id, count")
+    writelog( "There are "+str(len(unknown_record_counts))+" different record ID types not processed: ", output_log)    
+    writelog("**UNKNOWN record IDs and counts**", output_log)
+    writelog("record_id, count", output_log)
 
     keylist = unknown_record_counts.keys()
     keylist.sort()
     for key in keylist:
 #        print "%s: %s" % (key, record_counts[key])   
-        writelog(str(key)+", "+str(unknown_record_counts[key]))   
+        writelog(str(key)+", "+str(unknown_record_counts[key]), output_log)   
         unkCnt+=unknown_record_counts[key]  
     
     
 #    for key, value in unknown_record_counts.items():
 #        writelog(str(key)+", "+str(value))
 #        unkCnt+=value
-    writelog("\n  Total count: "+str(unkCnt))    
-    writelog("**")    
-    
-    writelog("TOTAL ACNA/EOB_DATE/BAN's processed:"+str(BDT_KEY_cnt))
-    writelog(" ")
-    writelog("Total input records read from input file:"+str(idCnt+unkCnt))
-    writelog(" ")    
- 
-    
-def writelog(msg):
-    global bdt_BCTFMOU_log
-    logger.info(msg)
-    
-    bdt_BCTFMOU_log.write("\n"+msg)
+    writelog("\n  Total count: "+str(unkCnt), output_log)    
+    writelog("**", output_log)    
 
+    writelog("TOTAL ACNA/EOB_DATE/BAN's processed:"+str(BDT_KEY_cnt), output_log)
+    writelog(" ", output_log)
+    writelog("Total input records read from input file:"+str(idCnt+unkCnt), output_log)
+    writelog(" ", output_log)    
 
 def process_ERROR_END(msg):
     writelog("ERROR:"+msg)
-    debug("ERROR:"+msg)
     process_close_files()
     raise "ERROR:"+msg
     
     
 def process_close_files():
     global bdt_input
-    global bdt_BCTFMOU_log
+    global output_log
     
-    if debugOn:
-        debug_log.close()
         
     bdt_input.close();
-    bdt_BCTFMOU_log.close()
+    output_log.close()
    
     
     
 def endProg(msg):
-    global hdlr
+#    global hdlr
  
     con.commit()
     con.close()
@@ -1494,15 +1824,15 @@ def endProg(msg):
      
     endTM=datetime.datetime.now()
     print "\nTotal run time:  %s" % (endTM-startTM)
-    writelog("\nTotal run time:  %s" % (endTM-startTM))
+    writelog("\nTotal run time:  %s" % (endTM-startTM), output_log)
      
 
-    writelog("\n"+msg)
+    writelog("\n"+msg, output_log)
      
     process_close_files()
     
-    hdlr.close()
-    logger.removeHandler(hdlr)
+#   hdlr.close()
+#   logger.removeHandler(hdlr)
 
 
 
