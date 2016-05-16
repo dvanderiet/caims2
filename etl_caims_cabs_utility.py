@@ -129,11 +129,6 @@ def clean_focus_input(tbl_defn_dict, field, value):
             
     return returnVal
     
-def getUniqueAcnaBanBillDate(tbl_name, eob_date, con, schema, output_log):
-    #Returns a concatenated list of all of the unique ACNA BAN and EOB_DATE
-    #This will be used to return the entire list to check for duplicates in memory instead of making an oracle call every time
-    
-    sqlQuery="SELECT distinct(acna||ban||eob_date) FROM "+schema+"."+tbl_name+" WHERE eob_date = '" + format_date(eob_date) + "'
     
 def process_check_exists(tbl_name, tbl_rec,tbl_dic,con,schema,output_log):
 #(process_check_exists("CAIMS_BDT_BALDTL", tmpTblRec, BDT_BALDTL_DEFN_DICT,con,output_log)):
