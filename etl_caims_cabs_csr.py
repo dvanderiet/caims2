@@ -3,7 +3,7 @@
 """
 PROGRAM NAME:     etl_caims_cabs_csr.py                                  
 LOCATION:                      
-PROGRAMMER(S):    Dan VandeRiet                                 
+PROGRAMMER(S):    Dan VandeRiet, Jason Yelverton                                
 DESCRIPTION:      CAIMS Extract/Transformation/Load program for CSR records.
                   
 REPLACES:         Legacy CTL program xxxxxxxxx - LOAD xxxxxxxxxx FOCUS DATABASE.
@@ -42,11 +42,12 @@ import sys
 import ConfigParser
 import os
 import platform
+import copy
 
 
 ###IMPORT COMMON/SHARED UTILITIES
-from etl_caims_cabs_utility import  process_insert_table, process_update_table, writelog, \
-                                   createTableTypeDict,setDictFields,convertnumber  
+from etl_caims_cabs_utility import  process_insert_many_table, writelog, db_record_exists, \
+                                   createTableTypeDict,setDictFields,convertnumber, invalid_acna_chars  
 
 
 settings = ConfigParser.ConfigParser()
@@ -55,19 +56,14 @@ settings.sections()
 
 "SET ORACLE CONNECTION"
 con=cx_Oracle.connect(settings.get('OracleSettings','OraCAIMSUser'),settings.get('OracleSettings','OraCAIMSPw'),settings.get('OracleSettings','OraCAIMSSvc'))
-
+schema=settings.get('OracleSettings','OraCAIMSUser')
 "CONSTANTS"
-#Set Debug Trace Below - Set to trun to turn on
-#DEBUGISON=True
 
 if str(platform.system()) == 'Windows': 
     OUTPUT_DIR = settings.get('GlobalSettings','WINDOWS_LOG_DIR');
 else:
     OUTPUT_DIR = settings.get('GlobalSettings','LINUX_LOG_DIR');    
  
-#if DEBUGISON:
-#    DEBUG_LOG=open(os.path.join(OUTPUT_DIR,settings.get('CSRSettings','CSR_DEBUG_FILE_NM')),"w")
-#
 
 #SET FILE NAME AND PATH
 #--inputPath comes from settings.ini
@@ -107,38 +103,96 @@ Level = ''
 
 root_rec=False
 csr_tape_val=False
-baldue_rec=False
-swsplchg_rec=False
-baldtl_rec=False
-dispdtl_rec=False
-pmntadj_rec=False
-adjmtdtl_rec=False
-crnt1_051200_rec=False
-crnt1_055000_rec=False
-crnt2_rec=False    
 CSR_CKT_exists=False 
  
 "GLOBAL VARIABLES"
 record_id='987654'
 prev_record_id='456789'  
 badKey=False
+grplock=False
+dup_ban_lock=False
 current_abbd_rec_key={'ACNA':'x','EOB_DATE':'1','BAN':'x'}
+current_abbd_rec_key_concat=''                     #EOB_DATE|ACNA|BAN       :    ID (BCCBSPLID)
+current_ckt_key_concat=''                          #BCCBSPL_ID|PSM|CIRCUIT  :    ID (CKT_ID)
+current_loc_key_concat=''                          #CKT_ID|LOC              :    ID (LOC_ID)
+current_cktusoc_key_concat=''                      #CKT_ID|CUSOC            :    ID (CKTUSOC_ID)
+#current_cktusoc_key_concat=''                      #CKT_ID|CUSOC|CUSOCQTY   :    ID (CKTUSOC_ID)
+current_usoc_key_concat=''                         #LOC_ID|USOC             :    ID (USOC_ID)
 prev_abbd_rec_key={'ACNA':'XXX','EOB_DATE':'990101','BAN':'000'}   #EOB_DATE,ACNA,BAN key   
+ 
+#Variables to hold sequence values for all table inserts
+csr_actlrec_sq=0
+csr_bccbspl_sq=0
+csr_billrec_sq=0
+csr_cfid_sq=0
+csr_ckt_sq=0
+csr_cktusoc_sq=0
+csr_cosfid_sq=0
+csr_cufid_sq=0
+csr_lfid_sq=0
+csr_loc_sq=0
+csr_ufid_sq=0
+csr_usoc_sq=0
+
  
 record_counts={}
 unknown_record_counts={}
 CSR_REC='40' 
 STAR_LINE='*********************************************************************************************'  
    
+# Initialize Unique keys - KV - where Key is concatenated unique fields and value is sequence id #
+# Child tables will have parent id
+bccbsplKeys={}
+billrecKeys={}
+actlrecKeys={}
+cktKeys={}
+locKeys={}
+cktusocKeys={}
+usocKeys={}
+##############################################
+csr_bccbspl_records={}
+csr_actlrec_records={}
+csr_billrec_records={}
+csr_ckt_records={}
+csr_loc_records={}
+csr_cfid_records={}
+csr_cosfid_records={}
+csr_cufid_records={}
+csr_ufid_records={}
+csr_lfid_records={}
+csr_usoc_records={}
+csr_cktusoc_records={}
+
+bccbspl_insert_cnt=0
+actlrec_insert_cnt=0
+billrec_insert_cnt=0
+ckt_insert_cnt=0
+loc_insert_cnt=0
+cfid_insert_cnt=0
+cosfid_insert_cnt=0
+cufid_insert_cnt=0
+ufid_insert_cnt=0
+lfid_insert_cnt=0
+usoc_insert_cnt=0
+cktusoc_insert_cnt=0
+
+results={}
+cntr=0
+inscnt=0
+rows=[]
+insql=""
+
 "TRANSLATERS"
 
-#def debug(msg):
-#    if DEBUGISON:
-#        DEBUG_LOG.write("\n"+str(msg))
+
+# ufidCols=ID,USOC_ID,UFID,UFID_DATA
+
+#actlrecCols=ID, BCCBSPL_ID, ACTL_NUM, CUST_NAME, ACTL, ACTLADDR1, ACTLADDR2, ACTLADDR3, INPUT_RECORDS
+
+# bccbsplCols=ID, ACNA, BAN, EOB_DATE, BILL_DATE, NLATA, ICSC_OFC, FGRP, TAPE, BAN_TAR, TAX_EXMPT, HOLD_BILL, PCNTR, CCNA, MCN, FINAL_IND, MKT_IND, FRMT_IND, EOBDATECC, BILLDATECC, UNB_TAR_IND, MAN_BAN_TYPE, INPUT_RECORDS    
        
     
 def init():
-#    debug("****** procedure==>  "+whereami()+" ******")
     global output_log
     global record_id
     global prev_record_id
@@ -182,8 +236,10 @@ def init():
     count_record(record_id,False)
     del headerLine,cycl_yy,cycl_mmdd,cycl_time
     
+    "Get initial values for all sequences"
+    initialize_sequences()
+    
 def main():
-#    debug("****** procedure==>  "+whereami()+" ******")
     
     global record_type
     global line
@@ -196,7 +252,7 @@ def main():
     global inputLineCnt, CSR_KEY_cnt
 
     "TABLE Dictionaries - for each segment"
-     
+    global TMP_TEST_EXMANY_tbl,  TMP_TEST_EXMANY_DEFN_DICT
     global CSR_BCCBSPL_tbl,  CSR_BCCBSPL_DEFN_DICT
     global CSR_BILLREC_tbl, CSR_BILLREC_DEFN_DICT
     global CSR_ACTLREC_tbl, CSR_ACTLREC_DEFN_DICT
@@ -214,65 +270,66 @@ def main():
     global csr_input
     global output_log
     
-      
+    global csr_bccbspl_records  
     global CSR_column_names
     global record_id
     global prev_record_id
     global current_abbd_rec_key 
     global prev_abbd_rec_key   
     global goodKey      
+    global current_abbd       #{ACNA|BAN|EOB_DATE:ID}
+    global current_psm_ckt   #{BCCBSPL_ID|PSM|CKT:ID} -- PID current_abbd[]
+    global current_loc       #{CKT_ID|LOC:ID}
+    global grplock
+    global dup_ban_lock
     
 #DECLARE TABLE ARRAYS AND DICTIONARIES
     
 #    CSR_BCCBSPL_tbl=collections.OrderedDict() 
     prev_abbd_rec_key={'ACNA':'XXX','EOB_DATE':'990101','BAN':'000'}
     
-
-    CSR_BCCBSPL_DEFN_DICT=createTableTypeDict('CAIMS_CSR_BCCBSPL',con,output_log) 
+    CSR_BCCBSPL_DEFN_DICT=createTableTypeDict('CAIMS_CSR_BCCBSPL',con,schema,output_log) 
     CSR_BCCBSPL_tbl=setDictFields('CAIMS_CSR_BCCBSPL', CSR_BCCBSPL_DEFN_DICT) 
 
-    CSR_BILLREC_DEFN_DICT=createTableTypeDict('CAIMS_CSR_BILLREC',con,output_log)
+    CSR_BILLREC_DEFN_DICT=createTableTypeDict('CAIMS_CSR_BILLREC',con,schema,output_log)
     CSR_BILLREC_tbl=setDictFields('CAIMS_CSR_BILLREC', CSR_BILLREC_DEFN_DICT)
 
-    CSR_ACTLREC_DEFN_DICT=createTableTypeDict('CAIMS_CSR_ACTLREC',con,output_log)
+    CSR_ACTLREC_DEFN_DICT=createTableTypeDict('CAIMS_CSR_ACTLREC',con,schema,output_log)
     CSR_ACTLREC_tbl=setDictFields('CAIMS_CSR_ACTLREC', CSR_ACTLREC_DEFN_DICT)
 
-    CSR_CKT_DEFN_DICT=createTableTypeDict('CAIMS_CSR_CKT',con,output_log)    
+    CSR_CKT_DEFN_DICT=createTableTypeDict('CAIMS_CSR_CKT',con,schema,output_log)    
     CSR_CKT_tbl=setDictFields('CAIMS_CSR_CKT', CSR_CKT_DEFN_DICT)
 
-    CSR_LOC_DEFN_DICT=createTableTypeDict('CAIMS_CSR_LOC',con,output_log)    
+    CSR_LOC_DEFN_DICT=createTableTypeDict('CAIMS_CSR_LOC',con,schema,output_log)    
     CSR_LOC_tbl=setDictFields('CAIMS_CSR_LOC', CSR_LOC_DEFN_DICT)
 
-    CSR_LFID_DEFN_DICT=createTableTypeDict('CAIMS_CSR_LFID',con,output_log) 
+    CSR_LFID_DEFN_DICT=createTableTypeDict('CAIMS_CSR_LFID',con,schema,output_log) 
     CSR_LFID_tbl=setDictFields('CAIMS_CSR_LFID', CSR_LFID_DEFN_DICT)
 
-    CSR_COSFID_DEFN_DICT=createTableTypeDict('CAIMS_CSR_COSFID',con,output_log) 
+    CSR_COSFID_DEFN_DICT=createTableTypeDict('CAIMS_CSR_COSFID',con,schema,output_log) 
     CSR_COSFID_tbl=setDictFields('CAIMS_CSR_COSFID', CSR_COSFID_DEFN_DICT)
 
-    CSR_UFID_DEFN_DICT=createTableTypeDict('CAIMS_CSR_UFID',con,output_log) 
+    CSR_UFID_DEFN_DICT=createTableTypeDict('CAIMS_CSR_UFID',con,schema,output_log) 
     CSR_UFID_tbl=setDictFields('CAIMS_CSR_UFID', CSR_UFID_DEFN_DICT)
 
-    CSR_USOC_DEFN_DICT=createTableTypeDict('CAIMS_CSR_USOC',con,output_log) 
+    CSR_USOC_DEFN_DICT=createTableTypeDict('CAIMS_CSR_USOC',con,schema,output_log) 
     CSR_USOC_tbl=setDictFields('CAIMS_CSR_USOC', CSR_USOC_DEFN_DICT)
         
-    CSR_CUFID_DEFN_DICT=createTableTypeDict('CAIMS_CSR_CUFID',con,output_log) 
+    CSR_CUFID_DEFN_DICT=createTableTypeDict('CAIMS_CSR_CUFID',con,schema,output_log) 
     CSR_CUFID_tbl=setDictFields('CAIMS_CSR_CUFID', CSR_CUFID_DEFN_DICT)
 
-    CSR_CFID_DEFN_DICT=createTableTypeDict('CAIMS_CSR_CFID',con,output_log) 
+    CSR_CFID_DEFN_DICT=createTableTypeDict('CAIMS_CSR_CFID',con,schema,output_log) 
     CSR_CFID_tbl=setDictFields('CAIMS_CSR_CFID', CSR_CFID_DEFN_DICT)
     
-    CSR_CKTUSOC_DEFN_DICT=createTableTypeDict('CAIMS_CSR_CKTUSOC',con,output_log) 
+    CSR_CKTUSOC_DEFN_DICT=createTableTypeDict('CAIMS_CSR_CKTUSOC',con,schema,output_log) 
     CSR_CKTUSOC_tbl=setDictFields('CAIMS_CSR_CKTUSOC', CSR_CFID_DEFN_DICT)   
    
-    
-    
-    
     "COUNTERS"
     inputLineCnt=0
     CSR_KEY_cnt=0
     status_cnt=0
+    exmanyCnt=0
     "KEY"
-    
     
     Level=' '
     "LOOP THROUGH INPUT CABS TEXT FILE"
@@ -284,7 +341,6 @@ def main():
         if status_cnt>999:
             print str(inputLineCnt)+" lines completed processing...."+str(datetime.datetime.now())
             status_cnt=0
-#        print "line count is " +str(inputLineCnt  )
         record_type=line[:2]
                
          
@@ -305,12 +361,17 @@ def main():
             if badKey:
                 count_record("BAD_ABD_KEY",True)
                 writelog("WARNING: BAD INPUT DATA.  ACNA="+current_abbd_rec_key['ACNA']+", BAN="+current_abbd_rec_key['BAN']+", EOB_DATE="+current_abbd_rec_key['EOB_DATE'],output_log)
+            elif dup_ban_lock and record_id != '010100':
+                count_record("DUP_BAN",True)
+            elif grplock and record_id != '010100':
+                count_record("BAD_FGRP",True)
             else:
                 if current_abbd_rec_key != prev_abbd_rec_key:
-#                    debug("************************** NEW ACNA BAN EOBDATE**************************")
-#                    debug(current_abbd_rec_key)
-                    
                     CSR_KEY_cnt+=1
+                    exmanyCnt+=1
+                    if exmanyCnt >= 5:
+                        process_inserts()
+                        exmanyCnt=0
                     reset_record_flags()
                     
                 process_csr_records()
@@ -332,13 +393,14 @@ def main():
         "END-MAIN PROCESS LOOP"    
     #END of For Loop
        
- 
+    process_inserts()
+#    update_sequences()                    
+    reset_record_flags()
 ###############################################main end#########################################################
  
 
 
 def log_footer_rec_info(): 
-#    debug("****** procedure==>  "+whereami()+" ******")
     global record_id
     global Level
     global output_log
@@ -353,126 +415,7 @@ def log_footer_rec_info():
     
     count_record(record_id,False)
 
-
-
-          
-# 01      S3
-#**************            VERIFIED
-#*EOB_DATE    **I
-#*ACNA        **I
-#*BAN         **I
-#*BILL_DATE   **I
-#*            **
-#***************
-# **************
-#       I
-#       +-----------------+-----------------+--------------------+
-#       I                 I                 I                    I
-#       I CUSTSEG         I PSMSEG-VERIFIED I BILLREC-VERIFIED   I ACTLREC
-# 02    I KU        03    I S1        13    I S1           14    I S1
-#..............    **************    **************       **************
-#:BAN         :K   *PSM         **   *BILLNAME    **      *ACTL_NUM    **
-#:CUST_GROUP  :    *            **   *BADDR1      **      *CUST_NAME   **
-#:MKT_ID      :    *            **   *BADDR2      **      *ACTL        **
-#:SPLRID      :    *            **   *BADDR3      **      *ACTLADDR1   **
-#:            :    *            **   *            **      *            **
-#:............:    ***************   ***************      ***************
-# JOINED  BCCBCACB  **************    **************       **************
-#                         I
-#                         I
-#                         I
-#                         I CKTSEG
-#                   04    I S1
-#                  **************
-#                  *CIRCUIT     **
-#                  *FID         **
-#                  *CDINSTCC    **
-#                  *CACT        **
-#                  *            **
-#                  ***************
-#                   **************
-#                         I
-#       +-----------------+-----------------+-----------------+
-#       I                 I                 I                 I
-#       I LOCSEG          I CFIDSEG         I COSFID          I CKTUSOC
-# 05    I S1        09    I S0        10    I S0        11    I S1
-#**************    **************    **************    **************
-#*LOC         **   *CFID        **   *COSFID      **   *CUSOC       **
-#*LSO         **I  *FID_DATA    **   *COSFID_DATA **   *CUSOCQTY    **
-#*FSO         **I  *            **   *            **   *CUDINSTCC   **
-#*CKLFID      **   *            **   *            **   *CUACT       **
-#*            **   *            **   *            **   *            **
-#***************   ***************   ***************   ***************
-# **************    **************    **************    **************
-#       I                                                     I
-#       +-----------------+                                   I
-#       I                 I                                   I
-#       I USOCSEG         I LFIDSEG                           I CUFIDSEG
-# 06    I S1        08    I S0                          12    I S0
-#**************    **************                      **************
-#*USOC        **   *LOCFID      **                     *CUFID       **
-#*USOC_CNT    **   *LF_DATA     **                     *CUFID_DATA  **
-#*QUSOC       **   *            **                     *            **
-#*UCODE       **   *            **                     *            **
-#*            **   *            **                     *            **
-#***************   ***************                     ***************
-# **************    **************                      **************
-#       I
-#       I
-#       I
-#       I UFIDSEG
-# 07    I S0
-#**************
-#*UFID        **
-#*UFID_DATA   **
-#*            **
-#*            **
-#*            **
-#***************
-# **************
-#  
-#SECTION 01
-#             STRUCTURE OF FOCUS    FILE BCCBFOS  ON 11/06/12 AT 11.55.17
-#
-#         ROOTREC
-# 01      SH3
-#**************
-#*EOB_DATE    **I
-#*ACNA        **I
-#*BAN         **I
-#*BILL_DATE   **I
-#*            **
-#***************
-# **************
-#       I
-#       +-----------------+
-#       I                 I
-#       I CUSTSEG         I PSMSEG
-# 02    I KU        04    I S1
-#..............    **************
-#:BAN         :K   *PSM         **
-#:CUST_GROUP  :    *            **
-#:MKT_ID      :    *            **
-#:SPLRID      :    *            **
-#:            :    *            **
-#:............:    ***************
-# JOINEDI BCCBCACB  **************
-#       I                 I
-#       I                 I
-#       I                 I
-#       I CUSTSEG2        I CKTSEG
-# 03    I KU        05    I S1
-#..............    **************
-#:CUST_GROUP  :K   *EC_CKT_ID   **
-#:CUST_GRP_NAM:    *ST_ID       **
-#:BUS_OFC_ID  :    *ST_LV_CC    **
-#:            :    *HICAP_IND   **
-#:            :    *            **
-#:............:    ***************
-# JOINED  BCTFCACG  **************
-
 def process_csr_records():
-#    debug("****** procedure==>  "+whereami()+" ******")
     global record_id
     global Level
     global tstx
@@ -484,27 +427,27 @@ def process_csr_records():
      
     dtst=line[224:225]  
     unknownRecord=False
-    if record_id == '010100':                                  #ROOTREC VERIFIED
-        process_TYP0101_HEADREC()                              #ROOTREC VERIFIED
-    elif record_id == '050500':                                #ROOTREC VERIFIED
-        process_ROOTREC_TYP0505()   #INSERT  CSR_BCCBSPL_tbl   #ROOTREC VERIFIED
-    elif record_id in ('051000','051100'):                     #ROOTREC VERIFIED
-        process_ROOTREC_CHEKFID() #UPDATE   CSR_BCCBSPL_tbl    #ROOTREC VERIFIED
-    elif record_id == '100500':                                #BILLREC VERIFIED
-        process_BILLREC_BILLTO()                               #BILLREC VERIFIED
-    elif record_id == '101000':                                #0 records in current input file
-        process_ACTLREC_BILLTO()                               #0 records in current input file
-    elif record_id == '101500':       #udpate root record      #ROOTREC VERIFIED
-        process_ROOTREC_UPROOT()    #UPDATE   CSR_BCCBSPL_tbl  #ROOTREC VERIFIED
-    elif record_id == '150500' and dtst !='D':           #       check dtst 
+    if record_id == '010100':                                  
+        process_TYP0101_HEADREC()                              
+    elif record_id == '050500':                                
+        process_ROOTREC_TYP0505()
+    elif record_id in ('051000','051100'):                     
+        process_ROOTREC_CHEKFID()
+    elif record_id == '100500':                                
+        process_BILLREC_BILLTO()                               
+    elif record_id == '101000':                                
+        process_ACTLREC_BILLTO()                               
+    elif record_id == '101500':
+        process_ROOTREC_UPROOT()
+    elif record_id == '150500' and dtst !='D':
         process_TYP1505_CKT_LOC()       
-    elif record_id in ('150600','151001') and dtst !='D':#       check dtst 
+    elif record_id in ('150600','151001') and dtst !='D':
         process_FIDDRVR()     
-    elif record_id == '151000' and dtst !='D':           #       check dtst 
+    elif record_id == '151000' and dtst !='D':
         process_USOCDRVR_36()
-    elif record_id == '151600' and dtst !='D':           #       check dtst 
+    elif record_id == '151600' and dtst !='D':
         process_USOCDRVR_TAX()    
-    elif record_id == '151700' and dtst !='D':           #       check dtst 
+    elif record_id == '151700' and dtst !='D':
         process_USOCDRVR_PLN()  
     elif record_id in ('152000','152001'):
         process_TYP1520() 
@@ -517,23 +460,35 @@ def process_csr_records():
     count_record(record_id,unknownRecord)
 
         
- 
-       
-    
 def process_getkey():
-#    debug("****** procedure==>  "+whereami()+" ******")
     global badKey
-    
-    if line[6:11].rstrip(' ') == '' or line[17:30].rstrip(' ') == '' or line[11:17].rstrip(' ') == '':
-        badKey=True
+    global blankACNA
+    global badCharsInACNA
+ 
+    tmpACNA=line[6:11].rstrip(' ')
+    tmpBAN=line[17:30].rstrip(' ')
+    tmpEOB_DATE=line[11:17].rstrip(' ')
+    newACNA='nl'
+    badKey=False
+    blankACNA=False
+    badCharsInACNA=False
+       
+    if tmpACNA=='':
+        newACNA='nl'
+        blankACNA=True
+    elif invalid_acna_chars(tmpACNA):
+        newACNA='nl'
+        badCharsInACNA=True
     else:
-        badKey=False
+        newACNA=tmpACNA
+    
+    if tmpBAN == '' or tmpEOB_DATE == '':
+        badKey=True
         
-    return { 'ACNA':line[6:11],'EOB_DATE':line[11:17],'BAN':line[17:30]}
+    return { 'ACNA': newACNA, 'EOB_DATE':tmpEOB_DATE, 'BAN':tmpBAN}
      
     
 def reset_record_flags():
-#    debug("****** procedure==>  "+whereami()+" ******")    
     "These flags are used to check if a record already exists for the current acna/ban/eob_date"
     "The first time a record is processed, if the count == 0, then an insert will be performed,"
     "else an update."
@@ -541,41 +496,30 @@ def reset_record_flags():
     csr_tape_val=''    
     
     global root_rec
-    global baldue_rec
-    global swsplchg_rec
-    global baldtl_rec
-    global pmntadj_rec
     global adjmtdtl_rec
-    global crnt1_051200_rec
-    global crnt1_055000_rec
-    global crnt2_rec
-    global dispdtl_rec
     global Level
     global CSR_CKT_exists
     CSR_CKT_exists=False 
     Level=''    
-    
-    
-    
     root_rec=False
-    baldue_rec=False
-    swsplchg_rec=False
-    baldtl_rec=False
-    dispdtl_rec=False
-    pmntadj_rec=False
-    crnt1_051200_rec=False
-    crnt1_055000_rec=False
-    crnt2_rec=False
    
     
 def process_TYP0101_HEADREC():
-#    debug("****** procedure==>  "+whereami()+" ******")
-#    debug("Header Record:"+record_id)
     global verno
     global Level
     global output_log
+    global current_abbd_rec_key
+    global bccbsplKeys
+    global dup_ban_lock
      
 #   
+    tmp_current_abbd_rec_key_concat = current_abbd_rec_key['ACNA'].rstrip(' ')  + current_abbd_rec_key['BAN'].rstrip(' ')  + current_abbd_rec_key['EOB_DATE'].rstrip(' ')
+    if tmp_current_abbd_rec_key_concat in bccbsplKeys or db_record_exists('CAIMS_CSR_BCCBSPL', current_abbd_rec_key['ACNA'],current_abbd_rec_key['BAN'],current_abbd_rec_key['EOB_DATE'], con, schema, output_log):
+        dup_ban_lock=True
+        writelog("WARNING: DUPLICATE BAN - ACNA="+current_abbd_rec_key['ACNA']+", BAN="+current_abbd_rec_key['BAN']+", EOB_DATE="+current_abbd_rec_key['EOB_DATE'], output_log)
+#   
+    else:
+        dup_ban_lock=False
     initialize_tbl('CSR_BCCBSPL_tbl')
 #    initialize_BCCBSPL_tbl()
 #    FIXFORM X-225 X5 X6 X13 X31 X15 X6 VERSION_NBR/2 X1 X4 X3 X3 X2 X3 X4
@@ -599,7 +543,6 @@ def process_TYP0101_HEADREC():
     
     
 def process_ROOTREC_TYP0505(): 
-#    debug("****** procedure==>  "+whereami()+" ******")
     "050500"
 #    debug("Root Record:"+record_id)
     global root_rec
@@ -608,7 +551,12 @@ def process_ROOTREC_TYP0505():
     global output_log
     global banlock
     global grplock
-#    debug("Beginning of ROOT RECORD:" +record_id)
+    global current_abbd_rec_key
+    global current_abbd_rec_key_concat
+    global csr_bccbspl_records
+    global csr_bccbspl_sq
+    global bccbsplKeys
+
     Level = 'F'
     banlock='N'
    
@@ -622,7 +570,7 @@ def process_ROOTREC_TYP0505():
 
     CSR_BCCBSPL_tbl['FGRP']=line[25:26] 
     if CSR_BCCBSPL_tbl['FGRP'] in ('S','W'):
-        grplock='N'
+        grplock=False
         CSR_BCCBSPL_tbl['BILLDATECC']=line[159:167]  
         CSR_BCCBSPL_tbl['BILL_DATE']=line[161:167]    
         #note ICSC_OFC ix only 3 byte in MFD, 4 in FIXFORM ABOVE
@@ -634,112 +582,113 @@ def process_ROOTREC_TYP0505():
         CSR_BCCBSPL_tbl['UNB_TAR_IND']=line[207:208]
         CSR_BCCBSPL_tbl['EOBDATECC']=CSR_BCCBSPL_tbl['EOB_DATE']
         CSR_BCCBSPL_tbl['INPUT_RECORDS']=str(record_id)
-    else:
-        grplock='Y'
-        pass
     
+        current_abbd_rec_key_concat=current_abbd_rec_key['ACNA'].rstrip(' ')  + current_abbd_rec_key['BAN'].rstrip(' ')  + current_abbd_rec_key['EOB_DATE'].rstrip(' ')
+        bccbsplKeys[current_abbd_rec_key_concat]=csr_bccbspl_sq
+        CSR_BCCBSPL_tbl['ID']=csr_bccbspl_sq
+        csr_bccbspl_records[csr_bccbspl_sq]= copy.deepcopy(CSR_BCCBSPL_tbl)
+        csr_bccbspl_sq += 1            
     
+        #writelog("insert csr_bccbspl",output_log)
      
+        root_rec=True
     
+    else:
+        grplock=True
     
         
-    
-
-    "we already know ACNA, EOB_DATE, and BAN are the same"   
-
-#    process_insert_table("CAIMS_CSR_BCCBSPL", CSR_BCCBSPL_tbl, CSR_BCCBSPL_DEFN_DICT,con,output_log)
-    root_rec=True
-         
-    "no flag to set - part of root"
-
 def process_ROOTREC_CHEKFID():
-#    debug("****** procedure==>  "+whereami()+" ******")
     "051000,051100"
     global record_id
     global output_log
-#    debug("Root Record CheckFID:"+record_id)
+    global current_abbd_rec_key_concat
+    global bccbsplKeys
+
 #    FIXFORM X-225 X5 X6 X13 X31 X32 X32 X32 X32
 #    FIXFORM BILLFID/4 BILLFID_DATA/28
     
     if line[189:193] == 'CCNA':
-        #do UPCCNA
-        CSR_BCCBSPL_tbl['CCNA']=line[193:196]
-        CSR_BCCBSPL_tbl['INPUT_RECORDS']+=","+str(record_id)
+        csr_bccbspl_records[bccbsplKeys[current_abbd_rec_key_concat]]['CCNA']=line[193:196]
+        csr_bccbspl_records[bccbsplKeys[current_abbd_rec_key_concat]]['INPUT_RECORDS']+=","+str(record_id)
+        #writelog("update csr_bccbspl CCNA",output_log)
+        
     elif line[189:192] == 'MCN':
-        #do this
-        CSR_BCCBSPL_tbl['MCN']=line[193:221]
-        CSR_BCCBSPL_tbl['INPUT_RECORDS']+=","+str(record_id)
+        csr_bccbspl_records[bccbsplKeys[current_abbd_rec_key_concat]]['MCN']=line[193:221]
+        csr_bccbspl_records[bccbsplKeys[current_abbd_rec_key_concat]]['INPUT_RECORDS']+=","+str(record_id)
+        #writelog("update csr_bccbspl MCN",output_log)
+        
     else:
         #continue on, skip
         pass
 
-    if root_rec == True:
-        if CSR_BCCBSPL_tbl['MCN'].rstrip(' ') == '' and CSR_BCCBSPL_tbl['CCNA'].rstrip(' ') == '':
-            pass   #values are blank nothing to update
-#        else:
-#            process_update_table("CAIMS_CSR_BCCBSPL", CSR_BCCBSPL_tbl, CSR_BCCBSPL_DEFN_DICT,con,output_log)
-    else:
-        process_ERROR_END("ERROR: No root record for CHEKFID record "+str(record_id)+".  Not updating MCN or CCNA.")
-        
    
 def process_ROOTREC_UPROOT():
-#    debug("****** procedure==>  "+whereami()+" ******")
     global record_id
     global output_log
+    global current_abbd_rec_key_concat
+    global bccbsplKeys
+    global csr_bccbspl_records
     "ROOTREC  -  101500"    
 #    FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X31 TAPE/A1 X128       
  
-#    debug("Root Record UPROOT:"+record_id)
-    
     if root_rec==True:
         if line[61:62].rstrip(' ') != '':
-            CSR_BCCBSPL_tbl['TAPE']=line[61:62]
-            CSR_BCCBSPL_tbl['INPUT_RECORDS']+=","+str(record_id)
+            csr_bccbspl_records[bccbsplKeys[current_abbd_rec_key_concat]]['TAPE']=line[61:62]
+            csr_bccbspl_records[bccbsplKeys[current_abbd_rec_key_concat]]['INPUT_RECORDS']+=","+str(record_id)
 
         else:
             writelog("No TAPE value on input data for ACNA="+current_abbd_rec_key['ACNA']+", BAN="+current_abbd_rec_key['BAN']+", EOB_DATE="+current_abbd_rec_key['EOB_DATE'],output_log)
                  ##ONCE WE HIT THIS RECORD WE CAN PURGE/WRITE OUT the ROOT RECORD:
-        process_insert_table("CAIMS_CSR_BCCBSPL", CSR_BCCBSPL_tbl, CSR_BCCBSPL_DEFN_DICT,con,output_log)
+###        process_insert_table("CAIMS_CSR_BCCBSPL", CSR_BCCBSPL_tbl, CSR_BCCBSPL_DEFN_DICT,con,output_log)
+        #writelog("insert csr_bccbspl",output_log)
+        
     else:
         process_ERROR_END("ERROR: Encountered UPROOT record (record id "+record_id+") but no root record has been created.")
 
  
 
 def process_BILLREC_BILLTO():   
-#    debug("****** procedure==>  "+whereami()+" ******")
     global record_id
     global output_log
+    global current_abbd_rec_key_concat
+    global csr_billrec_records
+    global csr_billrec_sq
+    global bccbsplKeys
+    global billrecKeys
+    
     "100500"
-#    debug("BILLREC:"+record_id)
 #    FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X35 BILLNAME/A32
 #    FIXFORM BADDR1/A32 BADDR2/A32 BADDR3/A32 BADDR4/A32
 
-#    -************************************************************
-#    -*   PROCESS DATA FOR THE BILLREC SEGMENT OF DATABASE
-#    -*    USE '401005' RECORDS FOR BOS VER 22.
-#    -************************************************************
-      
-        
     initialize_tbl('CSR_BILLREC_tbl')    
-#    initialize_BILLREC_tbl()
+      
     CSR_BILLREC_tbl['BILLNAME']=line[65:97]
     CSR_BILLREC_tbl['BADDR1']=line[97:129]
     CSR_BILLREC_tbl['BADDR2']=line[129:161]
     CSR_BILLREC_tbl['BADDR3']=line[161:193]
     CSR_BILLREC_tbl['BADDR4']=line[193:225]
     CSR_BILLREC_tbl['INPUT_RECORDS']=str(record_id)
-    
-    process_insert_table("CAIMS_CSR_BILLREC", CSR_BILLREC_tbl, CSR_BILLREC_DEFN_DICT,con,output_log)
+###    process_insert_table("CAIMS_CSR_BILLREC", CSR_BILLREC_tbl, CSR_BILLREC_DEFN_DICT,con,output_log)
+    parentId=bccbsplKeys[current_abbd_rec_key_concat]           #Assign the parent id    
+    bill_key_concat=str(parentId) + CSR_BILLREC_tbl['BILLNAME']       #Set new billrec key
+    billrecKeys[bill_key_concat]=csr_billrec_sq
+    CSR_BILLREC_tbl['ID']=csr_billrec_sq
+    CSR_BILLREC_tbl['BCCBSPL_ID']=parentId
+    csr_billrec_records[csr_billrec_sq] = copy.deepcopy(CSR_BILLREC_tbl)
+    csr_billrec_sq += 1
+    #writelog("insert csr_billrec",output_log)
 
 def process_ACTLREC_BILLTO(): 
-#    debug("****** procedure==>  "+whereami()+" ******")
-#    debug("CSR_ACTLREC_tbl:"+record_id)
     global record_id
     global output_log
+    global current_abbd_rec_key_concat
+    global csr_actlrec_records
+    global csr_actlrec_sq
+    global bccbsplKeys
+    global actlrecKeys
     "ACTLREC  -  101000"    
     
     initialize_tbl('CSR_ACTLREC_tbl')
-#    initialize_ACTLREC_tbl()
     CSR_ACTLREC_tbl['ACTL_NUM']=line[61:65]
     
     CSR_ACTLREC_tbl['ACTL']=line[65:76]
@@ -747,28 +696,44 @@ def process_ACTLREC_BILLTO():
     CSR_ACTLREC_tbl['ACTLADDR2']=line[106:136]
     CSR_ACTLREC_tbl['ACTLADDR3']=line[136:166]
     CSR_ACTLREC_tbl['CUST_NAME']=line[167:197]
-    CSR_ACTLREC_tbl['FGRP']=line[217:218]
+    #CSR_ACTLREC_tbl['FGRP']=line[217:218]
     CSR_ACTLREC_tbl['INPUT_RECORDS']=str(record_id)
     
-    process_insert_table("CAIMS_CSR_ACTLREC", CSR_ACTLREC_tbl, CSR_ACTLREC_DEFN_DICT,con,output_log)
+###    process_insert_table("CAIMS_CSR_ACTLREC", CSR_ACTLREC_tbl, CSR_ACTLREC_DEFN_DICT,con,output_log)
+    parentId=bccbsplKeys[current_abbd_rec_key_concat]           #Assign the parent id
+    
+    actlkey_concat=str(parentId) + CSR_ACTLREC_tbl['ACTL_NUM']       #Set new actl key
+    actlrecKeys[actlkey_concat]=csr_actlrec_sq
+    CSR_ACTLREC_tbl['ID']=csr_actlrec_sq
+    CSR_ACTLREC_tbl['BCCBSPL_ID']=parentId
+    csr_actlrec_records[csr_actlrec_sq] = copy.deepcopy(CSR_ACTLREC_tbl)
+    csr_actlrec_sq += 1
+    #writelog("insert csr_actlrec",output_log)
  
 
 def process_TYP1505_CKT_LOC():
-#    debug("****** procedure==>  "+whereami()+" ******")    
     global Level
     global usoccnt
     global record_id
     global output_log
     global CSR_CKT_exists
+    global csr_ckt_sq
+    global csr_loc_sq
+    global current_abbd_rec_key_concat
+    global current_ckt_key_concat
+    global current_loc_key_concat
+    global csr_ckt_records
+    global csr_loc_records
+    global bccbsplKeys
+    global cktKeys
+    global locKeys
+    
     "150500"
-#    debug("process_TYP1505_CKT_LOC:"+record_id)
 #    FIXFORM X-159 TFID/4 X1 QTEST/120 X6 X21 ACTVY_IND/1
-        
         
     tfid=line[72:76].rstrip(' ')
     qtest=line[77:197]
     actvy_ind=line[224:225]
-    
     
     if actvy_ind=='D':
         pass  #SKIP record
@@ -779,16 +744,14 @@ def process_TYP1505_CKT_LOC():
         pass   #SKIP record
     else: #CREATE CKTSEG
         if tfid in ('CLS','CLF','CLT','CLM'):
-            #build CKTSEG segment
-#            debug("initializing CKT")
+
             initialize_tbl('CSR_CKT_tbl')
-#            initialize_CKT_tbl()
             ##FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X31
             #FIXFORM CDINSTCC/8 X3 FID/A4 X1 PSM/16 X-16 CIRCUIT/A53 X67
             #FIXFORM X1 CKT_LTP/A4 X1 CKT_MAN_BAN_UNITS/Z7.4 X6
             #FIXFORM CDACTCC/8 CACT/A1
             Level = 'C'
-#            debug("populating CKT")
+            
             CSR_CKT_tbl['CDINSTCC']=line[61:69]
             CSR_CKT_tbl['FID']=tfid
             CSR_CKT_tbl['PSM']=line[77:93]
@@ -798,75 +761,81 @@ def process_TYP1505_CKT_LOC():
             CSR_CKT_tbl['CDACTCC']=line[216:224]
             CSR_CKT_tbl['CACT']=line[224:225]
             CSR_CKT_tbl['INPUT_RECORDS']=str(record_id) 
-            process_insert_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
+###            process_insert_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
 
+            parentId=bccbsplKeys[current_abbd_rec_key_concat]                   #Assign the parent id    
+            ckt_key_concat=str(parentId) + CSR_CKT_tbl['PSM'] + CSR_CKT_tbl['CIRCUIT']   #Set new circuit key
+            current_ckt_key_concat=ckt_key_concat
+            cktKeys[ckt_key_concat]=csr_ckt_sq
+            
+            CSR_CKT_tbl['ID']=csr_ckt_sq
+            CSR_CKT_tbl['BCCBSPL_ID']=parentId
+            csr_ckt_records[csr_ckt_sq] = copy.deepcopy(CSR_CKT_tbl)
+            csr_ckt_sq += 1
             CSR_CKT_exists=True
             
-            #initialize all fields except the key
-            CSR_CKT_tbl['CDINSTCC']=''
-            CSR_CKT_tbl['FID']=''
-            CSR_CKT_tbl['CKT_LTP']=''
-            CSR_CKT_tbl['CKT_MAN_BAN_UNITS']=''
-            CSR_CKT_tbl['CDACTCC']=''
-            CSR_CKT_tbl['CACT']=''
-
+            #writelog("insert csr_ckt",output_log)
             
         elif tfid in  ('CKL','CKLT'):
-            #build LOCSEG setment
             initialize_tbl('CSR_LOC_tbl')
-#            initialize_LOC_tbl()
             Level = 'L'
             #FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X31
             #FIXFORM LDINSTCC/8 X3 CKLFID/A4 X1 LOC_DATA/A60 X60
             #FIXFORM X1 LOC_LTP/A4 X1 LOC_MAN_BAN_UNITS/Z7.4 X6
             #FIXFORM LDACTCC/8 LACT/A1
-            #COMPUTE
-            #usoccnt/I2=0 
             #below:It would ignore the first two characters and get the 3rd and 4th.
             #TLOC = EDIT(LOC_DATA,'$$99$') 
 
             usoccnt=0
-#            debug("CSR_LOC_tbl:"+record_id)
+
             CSR_LOC_tbl['LDINSTCC']=line[61:69]
             CSR_LOC_tbl['CKLFID']=line[72:76]
             CSR_LOC_tbl['LOC_DATA']=line[77:137]
-            CSR_LOC_tbl['TLOC']=line[79:81]
+            tloc=line[79:81]
             CSR_LOC_tbl['LOC_LTP']=line[198:202]
             CSR_LOC_tbl['LOC_MAN_BAN_UNITS']=line[203:210]
             CSR_LOC_tbl['LDACTCC']=line[216:224]
             CSR_LOC_tbl['LACT']=line[224:225]
             
             
-            if CSR_LOC_tbl['TLOC'] == '1-':
+            if tloc == '1-':
                 CSR_LOC_tbl['LOC'] ='1'
-            elif CSR_LOC_tbl['TLOC'] == '2-':
+            elif tloc == '2-':
                 CSR_LOC_tbl['LOC'] ='2'
-            elif CSR_LOC_tbl['TLOC'] == '3-':
+            elif tloc == '3-':
                 CSR_LOC_tbl['LOC'] ='3'
-            elif CSR_LOC_tbl['TLOC'] == '4-':
+            elif tloc == '4-':
                 CSR_LOC_tbl['LOC'] ='4'
-            elif CSR_LOC_tbl['TLOC'] == '5-':
+            elif tloc == '5-':
                 CSR_LOC_tbl['LOC'] ='5'
-            elif CSR_LOC_tbl['TLOC'] == '6-':
+            elif tloc == '6-':
                 CSR_LOC_tbl['LOC'] ='6'
-            elif CSR_LOC_tbl['TLOC'] == '7-':
+            elif tloc == '7-':
                 CSR_LOC_tbl['LOC'] ='7'
-            elif CSR_LOC_tbl['TLOC'] == '8-':
+            elif tloc == '8-':
                 CSR_LOC_tbl['LOC'] ='8'
-            elif CSR_LOC_tbl['TLOC'] == '9-':
+            elif tloc == '9-':
                 CSR_LOC_tbl['LOC'] ='9'
             else:
-                CSR_LOC_tbl['LOC'] =CSR_LOC_tbl['TLOC'] 
+                CSR_LOC_tbl['LOC'] =tloc 
                 
             CSR_LOC_tbl['INPUT_RECORDS']=str(record_id)
             
-            process_insert_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)            
+            #process_insert_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)
+            parentId=cktKeys[current_ckt_key_concat]                   #Assign the parent id    
+            loc_key_concat=str(parentId) + CSR_LOC_tbl['LOC']   #Set new loc key
+            current_loc_key_concat=loc_key_concat
+            locKeys[loc_key_concat]=csr_loc_sq
+            CSR_LOC_tbl['ID']=csr_loc_sq
+            CSR_LOC_tbl['CKT_ID']=parentId
+            csr_loc_records[csr_loc_sq] = copy.deepcopy(CSR_LOC_tbl)
+            csr_loc_sq += 1
+            #writelog("insert csr_loc",output_log)
         else:
             pass #SKIP record
             
        
 def process_FIDDRVR():
-#    debug("****** procedure==>  "+whereami()+" ******")    
     "150600, 151001 records"
 #    -************************************************************
 #    -* PROCESS '401506' AND '401511' RECORDS. THESE ARE FLOATING FIDS
@@ -876,13 +845,21 @@ def process_FIDDRVR():
     global tfid
     global record_id
     global output_log
+    global current_usoc_key_concat
+    global current_cktusoc_key_concat
+    global usocKeys
+    global cktusocKeys
+    global csr_cufid_records
+    global csr_cufid_sq
+    global csr_ufid_records
+    global csr_ufid_sq
+    
     "150600, 151001"
     #FIXFORM X-159 TFID/4 X121 X6 X21 ACTVY_IND/1    
     
     tfid=line[72:76] 
     actvy_ind=line[224:225]
     
-    #ACTVY_IND=line[224:225]
     if actvy_ind == 'D':
         pass
     elif (Level == 'F' and tfid.rstrip(' ') == 'ASG' ) \
@@ -892,11 +869,9 @@ def process_FIDDRVR():
         or (Level == 'L' and tfid.rstrip(' ') == 'ASG'):
             pass
     elif Level == 'C':
-        
         process_CKTFIDRVR()
         
     elif Level == 'CU':
-        #GOTO  CUSOCFID  
         #FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X42
         #FIXFORM CUFID/A4 X1 CUFID_DATA/36 X85
         #FIXFORM FGRP/1 X26
@@ -905,20 +880,21 @@ def process_FIDDRVR():
 #        debug("CSR_CUFID_tbl:"+record_id)
         CSR_CUFID_tbl['CUFID']=tfid
         CSR_CUFID_tbl['CUFID_DATA']=line[77:113]
-        CSR_CUFID_tbl['FGRP']=line[198:199]
+        #CSR_CUFID_tbl['FGRP']=line[198:199]
         CSR_CUFID_tbl['INPUT_RECORDS']=str(record_id)
         
-        process_insert_table("CAIMS_CSR_CUFID", CSR_CUFID_tbl, CSR_CUFID_DEFN_DICT,con,output_log)
+        CSR_CUFID_tbl['ID']=csr_cufid_sq
+        CSR_CUFID_tbl['CKTUSOC_ID']=cktusocKeys[current_cktusoc_key_concat]  #parent id is id from CAIMS_CSR_CKTUSOC
+        csr_cufid_records[csr_cufid_sq]= copy.deepcopy(CSR_CUFID_tbl)
+        csr_cufid_sq += 1 
+        
+###        process_insert_table("CAIMS_CSR_CUFID", CSR_CUFID_tbl, CSR_CUFID_DEFN_DICT,con,output_log)
         
     elif Level == 'CO':
         process_COSFID()
     elif Level == 'L':
         process_LOCFIDRVR()
     elif Level == 'LU':
-#        GOTO LUSOCFID 
-#        -* THIS CASE READS THE  FLOATED FID AND LOADS THE CORRESPONDING
-#        -* FIELD IN THE UFIDSEG SEGMENT OF THE DATABASE.
-#        -************************************************************
 #        FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X42
 #        FIXFORM UFID/A4 X1 UFID_DATA/A36 X85
 #        FIXFORM FGRP/1 X26
@@ -928,126 +904,104 @@ def process_FIDDRVR():
             pass #go to top
         else:
             initialize_tbl('CSR_UFID_tbl') 
-#            initialize_UFID_tbl()
-#            debug("CSR_UFID_tbl:"+record_id)
             CSR_UFID_tbl['UFID']=ufid
             CSR_UFID_tbl['UFID_DATA']=line[77:113]
-            CSR_UFID_tbl['FGRP']=line[198:199]
+            #CSR_UFID_tbl['FGRP']=line[198:199]
             CSR_UFID_tbl['INPUT_RECORDS']=str(record_id)
             
-            process_insert_table("CAIMS_CSR_UFID", CSR_UFID_tbl, CSR_UFID_DEFN_DICT,con,output_log)   
+            CSR_UFID_tbl['ID']=csr_ufid_sq
+            CSR_UFID_tbl['USOC_ID']=usocKeys[current_usoc_key_concat]  #parent id is id from CAIMS_CSR_CKT
+            csr_ufid_records[csr_ufid_sq]= copy.deepcopy(CSR_UFID_tbl)
+            csr_ufid_sq += 1 
+            
+            #writelog("insert csr_ufid",output_log)
+###            process_insert_table("CAIMS_CSR_UFID", CSR_UFID_tbl, CSR_UFID_DEFN_DICT,con,output_log)   
     else:
         pass #go to top
 
 def process_LOCFIDRVR():
-#    debug("****** procedure==>  "+whereami()+" ******")    
     global tfid, Level
     global record_id
     global output_log
+    global current_loc_key_concat    
+    global locKeys
+    global csr_loc_records
 
-#    initialize_LOC_tbl()    
-    #No initialize... These should all be updates.
-#    debug("CSR_LOC_tbl:"+record_id)
     if tfid == 'LSO ':                      
-#         GOTO LOCLSOUP (UPDATE THE LSO FIELD IN THE LOC SEGMENT )
-#         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 LSO/7
-        CSR_LOC_tbl['LSO']=line[77:84]
-        CSR_LOC_tbl['INPUT_RECORDS']+=","+str(record_id)
-        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)
-    elif tfid == 'FSO ':  
+        csr_loc_records[locKeys[current_loc_key_concat]]['LSO']=line[77:84]
+        #writelog("update csr_loc",output_log)  
         
-#         GOTO LOCFSOUP (UPDATE THE FSO FIELD IN THE LOC SEGMENT )
-#         LOC = LOC 
-#         FIXFORM X-225 X5 X6 X13 X42 X4 X1 FSO/7
-        CSR_LOC_tbl['FSO']=line[77:84]
-        CSR_LOC_tbl['INPUT_RECORDS']+=","+str(record_id)
-        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)
+    elif tfid == 'FSO ':  
+        #FIXFORM X-225 X5 X6 X13 X42 X4 X1 FSO/7
+        csr_loc_records[locKeys[current_loc_key_concat]]['FSO']=line[77:84]
+        #writelog("update csr_loc",output_log)  
+        
     elif tfid == 'NCI ': 
-#         GOTO LOCNCIUP (UPDATE THE NCI FIELD IN THE LOC SEGMENT )
-#         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 NCI/13
-        CSR_LOC_tbl['NCI']=line[77:90]
-        CSR_LOC_tbl['INPUT_RECORDS']+=","+str(record_id)
-        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)
+        csr_loc_records[locKeys[current_loc_key_concat]]['NCI']=line[77:90]
+        #writelog("update csr_loc",output_log)
+        
     elif tfid == 'NC  ': 
-#         GOTO LOCLNCUP (UPDATE THE LNCODE FIELD IN THE LOC SEGMENT )
-#         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 LNCODE/4
-        CSR_LOC_tbl['LNCODE']=line[77:81]
-        CSR_LOC_tbl['INPUT_RECORDS']+=","+str(record_id)
-        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)
+        csr_loc_records[locKeys[current_loc_key_concat]]['LNCODE']=line[77:81]
+        #writelog("update csr_loc",output_log)  
+        
     elif tfid == 'ICO ': 
-#        GOTO LOCICOUP (UPDATE THE ICO FIELD IN THE LOC SEGMENT )
-#        LOC = LOC 
 #        FIXFORM X-225 X5 X6 X13 X42 X4 X1 ICO/4
-        CSR_LOC_tbl['ICO']=line[77:81]
-        CSR_LOC_tbl['INPUT_RECORDS']+=","+str(record_id)
-        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)
+        csr_loc_records[locKeys[current_loc_key_concat]]['ICO']=line[77:81]
+        #writelog("update csr_loc",output_log)
+        
     elif tfid == 'SGN ': 
-#         GOTO LOCSGNUP (UPDATE THE SGN FIELD IN THE LOC SEGMENT )
-#         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 SGN/3
-        CSR_LOC_tbl['SGN']=line[77:80]
-        CSR_LOC_tbl['INPUT_RECORDS']+=","+str(record_id)
-        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)
+        csr_loc_records[locKeys[current_loc_key_concat]]['SGN']=line[77:80]
+        #writelog("update csr_loc",output_log)
+        
     elif tfid == 'TAR ': 
-#         GOTO LOCTARUP  (UPDATE THE LTAR FIELD IN THE LOC SEGMENT )
-#         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 LTAR/4
-        CSR_LOC_tbl['LTAR']=line[77:81]
-        CSR_LOC_tbl['INPUT_RECORDS']+=","+str(record_id)
-        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)
+        csr_loc_records[locKeys[current_loc_key_concat]]['LTAR']=line[77:81]
+        #writelog("update csr_loc",output_log)
+        
     elif tfid == 'RTAR': 
-#         GOTO LOCRTARUP (UPDATE THE LRTAR FIELD IN THE LOC SEGMENT )
-#         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 LRTAR/4
-        CSR_LOC_tbl['LRTAR']=line[77:81] 
-        CSR_LOC_tbl['INPUT_RECORDS']+=","+str(record_id)
-        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)
+        csr_loc_records[locKeys[current_loc_key_concat]]['LRTAR']=line[77:81]
+        #writelog("update csr_loc",output_log)
+        
     elif tfid == 'DES ': 
-#         GOTO LOCLDESUP (UPDATE THE LDES  FIELD IN THE LOC SEGMENT )
-#         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 LDES/36
-        CSR_LOC_tbl['LDES']=line[77:113] 
-        CSR_LOC_tbl['INPUT_RECORDS']+=","+str(record_id)
-        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)
+        csr_loc_records[locKeys[current_loc_key_concat]]['LDES']=line[77:113]
+        #writelog("update csr_loc",output_log)
+        
     elif tfid == 'HSO ': 
-#         GOTO LOCHSOUP  (UPDATE THE HSO FIELD IN THE LOC SEGMENT )
-#         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 HSO/7
-        CSR_LOC_tbl['HSO']=line[77:84]
-        CSR_LOC_tbl['INPUT_RECORDS']+=","+str(record_id)
-        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)
+        csr_loc_records[locKeys[current_loc_key_concat]]['HSO']=line[77:84]
+        #writelog("update csr_loc",output_log)
+        
     elif tfid == 'CFA ': 
-#         GOTO LOCCFAUP  (UPDATE THE CFA FIELD IN THE LOC SEGMENT )
-#         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 CFA/40
-        CSR_LOC_tbl['CFA']=line[77:117]
-        CSR_LOC_tbl['INPUT_RECORDS']+=","+str(record_id)
-        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)
+        csr_loc_records[locKeys[current_loc_key_concat]]['CFA']=line[77:117]
+        #writelog("update csr_loc",output_log)
+        
     elif tfid == 'XR  ': 
-#         GOTO LOCXRUP   (UPDATE THE XR  FIELD IN THE LOC SEGMENT )
-#         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 XR/4
-        CSR_LOC_tbl['XR']=line[77:81]
-        CSR_LOC_tbl['INPUT_RECORDS']+=","+str(record_id)
-        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)
+        csr_loc_records[locKeys[current_loc_key_concat]]['XR']=line[77:81]
+        #writelog("update csr_loc",output_log)  
     elif tfid == 'SN  ': 
-#         GOTO LOCSNUP (UPDATE THE SN  FIELD IN THE LOC SEGMENT ) 
-#         LOC = LOC 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 SN/30
-        CSR_LOC_tbl['SN']=line[77:107]
-        CSR_LOC_tbl['INPUT_RECORDS']+=","+str(record_id)
-        process_update_table("CAIMS_CSR_LOC", CSR_LOC_tbl, CSR_LOC_DEFN_DICT,con,output_log)
+        csr_loc_records[locKeys[current_loc_key_concat]]['SN']=line[77:107]
+        #writelog("update csr_loc",output_log)
     else:  
         process_LOCFID()               
  
 
 def process_LOCFID():
-#    debug("****** procedure==>  "+whereami()+" ******")
     global record_id
     global output_log
+    global current_loc_key_concat    
+    global locKeys    
+    global csr_lfid_records
+    global csr_lfid_sq
+
 #     -* THIS CASE READS THE  FLOATED FID AND LOADS THE CORRESPONDING
 #     -* FIELD IN THE LFIDSEG SEGMENT OF THE DATABASE.
 #     -************************************************************ 
@@ -1060,267 +1014,188 @@ def process_LOCFID():
     
     CSR_LFID_tbl['LOCFID']=line[72:76]
     CSR_LFID_tbl['LOCFID_DATA']=line[77:113]
-    CSR_LFID_tbl['FGRP']=line[198:199]
+#    CSR_LFID_tbl['FGRP']=line[198:199]
     CSR_LFID_tbl['INPUT_RECORDS']=str(record_id)
-    process_insert_table("CAIMS_CSR_LFID", CSR_LFID_tbl, CSR_LFID_DEFN_DICT,con,output_log)
+    
+    CSR_LFID_tbl['ID']=csr_lfid_sq
+    CSR_LFID_tbl['LOC_ID']=locKeys[current_loc_key_concat]  #parent id is id from CAIMS_CSR_LOC
+    csr_lfid_records[csr_lfid_sq]= copy.deepcopy(CSR_LFID_tbl)
+    csr_lfid_sq += 1    
+    
+    #writelog("insert lfid_tbl",output_log)  
  
 def process_COSFID():   
-#    debug("****** procedure==>  "+whereami()+" ******")
     global tfid, Level,record_id
     global output_log
-    " "
+    global current_ckt_key_concat
+    global cktKeys
+    global csr_ckt_records
+    global csr_cosfid_records
+    global csr_cosfid_sq
+
 #-************************************************************
 #-* PROCESS '401511' RECORDS FROM CASE FIDDRVR WHEN Level EQUALS 'CO'.
 #-* THIS CASE READS THE FLOATED FID AND LOADS THE COSFID & COSFID_DATA
 #-* FIELD IN COSFID   SEGMENT OF THE DATABASE.
 #-************************************************************
   
-#    if CSR_COSFID_tbl['COSFID']==line[72:76] and CSR_COSFID_tbl['COSFID_DATA']==line[77:113]:
-#        pass
-#    else:
-#    debug("CSR_COSFID_tbl:"+record_id)
     initialize_tbl('CSR_COSFID_tbl')    
-#    initialize_COSFID_tbl() 
-            #GOTO COSFID sEGMENT
 #                FIXFORM X-225 X5 X6 X13 X42
 #                FIXFORM COSFID/A4 X1 COSFID_DATA/36 X85
 #                FIXFORM X1 X26
     CSR_COSFID_tbl['COSFID']=line[72:76]
     CSR_COSFID_tbl['COSFID_DATA']=line[77:113]
     CSR_COSFID_tbl['INPUT_RECORDS']=str(record_id)
-    process_insert_table("CAIMS_CSR_COSFID", CSR_COSFID_tbl, CSR_COSFID_DEFN_DICT,con,output_log)
+    
+    CSR_COSFID_tbl['ID']=csr_cosfid_sq
+    CSR_COSFID_tbl['CKT_ID']=cktKeys[current_ckt_key_concat]  #parent id is id from CAIMS_CSR_CKT
+    csr_cosfid_records[csr_cosfid_sq]= copy.deepcopy(CSR_COSFID_tbl)
+    csr_cosfid_sq += 1 
+    
+    #writelog("update csr_cosfid",output_log)  
 
 def process_CKTFIDRVR():
-#    debug("****** procedure==>  "+whereami()+" ******")  
     global Level
     global tfid
     global  record_id
     global output_log
+    global current_ckt_key_concat
+    global cktKeys
+    global csr_ckt_records
+    global csr_cfid_records
+    global csr_cfid_sq
     
-#    debug("CSR_CKT_tbl:"+record_id)
     if tfid == 'NC  ': 
-#         GOTO CKTNCUP (LOADS THE NCODE FIELD IN THE CKTSEG OF THE DATABASE)
-          #CIRCUIT = CIRCUIT ?????
          #FIXFORM X-225 X5 X6 X13 X42 X4 X1 NCODE/4
-         #MATCH CIRCUIT? update ncode
-         CSR_CKT_tbl['NCODE']=line[77:81]
-         CSR_CKT_tbl['INPUT_RECORDS']+=","+str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
+        csr_ckt_records[cktKeys[current_ckt_key_concat]]['NCODE']=line[77:81]
+        #writelog("update csr_ckt",output_log)
+         
     elif tfid == 'PIU ': 
-#        GOTO CKTPIUUP (LOADS THE PIU FIELD IN THE CKTSEG OF THE DATABASE)
-#        CIRCUIT = CIRCUIT 
 #        FIXFORM X-225 X5 X6 X13 X42 X4 X1 PIU/3
-         #MATCH CIRCUIT? update piu
-         CSR_CKT_tbl['PIU']=line[77:80]
-         CSR_CKT_tbl['INPUT_RECORDS']+=","+str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
+        csr_ckt_records[cktKeys[current_ckt_key_concat]]['PIU']=line[77:80]
+        #writelog("update csr_ckt",output_log) 
+        
     elif tfid == 'ASG ': 
-#         GOTO CKTASGUP (LOADS THE ASG FIELD IN THE CKTSEG OF THE DATABASE)
-#         CIRCUIT = CIRCUIT 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 ASG/6
-          #MATCH CIRCUIT? update asg
-         CSR_CKT_tbl['ASG']=line[77:83]
-         CSR_CKT_tbl['INPUT_RECORDS']+=","+str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
+        csr_ckt_records[cktKeys[current_ckt_key_concat]]['ASG']=line[77:83]
+        #writelog("update csr_ckt",output_log)  
+        
     elif tfid == 'LCC ': 
-#         GOTO CKTLCCUP (LOADS THE LCC FIELD IN THE CKTSEG OF THE DATABASE)
-#         CIRCUIT = CIRCUIT 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 LCC/3
-#         #MATCH CIRCUIT? update lcc
-         CSR_CKT_tbl['LCC']=line[77:80]
-         CSR_CKT_tbl['INPUT_RECORDS']+=","+str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
+        csr_ckt_records[cktKeys[current_ckt_key_concat]]['LCC']=line[77:80]
+        #writelog("update csr_ckt",output_log)  
+         
     elif tfid == 'BAND': 
-#         GOTO CKTBNDUP (LOADS THE BAND FIELD IN THECKTSEG OF THE DATABASE)
-#        CIRCUIT = CIRCUIT 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 BAND/1
-         #MATCH CIRCUIT? update band
-         CSR_CKT_tbl['BAND']=line[77:78]
-         CSR_CKT_tbl['INPUT_RECORDS']+=","+str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
+        csr_ckt_records[cktKeys[current_ckt_key_concat]]['BAND']=line[77:78]
+        #writelog("update csr_ckt",output_log)  
+        
     elif tfid == 'TAR ': 
-#        GOTO CKTTARUP (LOADS THE TAR FIELD IN THE CKTSEG OF THE DATABASE)
-#        CIRCUIT = CIRCUIT 
 #        FIXFORM X-225 X5 X6 X13 X42 X4 X1 TAR/4
-         #MATCH CIRCUIT? update TAR
-         CSR_CKT_tbl['TAR']=line[77:81]
-         CSR_CKT_tbl['INPUT_RECORDS']+=","+str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
+        csr_ckt_records[cktKeys[current_ckt_key_concat]]['TAR']=line[77:81]
+        #writelog("update csr_ckt",output_log)  
+        
     elif tfid == 'RTAR': 
-#         GOTO CKTRTARUP (CRTAR  FIELD IN THE CKTSEG OF THE DATABASE)
-#         CIRCUIT = CIRCUIT 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 RTAR/4
-         #MATCH CIRCUIT? update RTAR
-         CSR_CKT_tbl['RTAR']=line[77:81]
-         CSR_CKT_tbl['INPUT_RECORDS']+=","+str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
+        csr_ckt_records[cktKeys[current_ckt_key_concat]]['RTAR']=line[77:81]
+        #writelog("update csr_ckt",output_log)  
+        
     elif tfid == 'LLN ': 
-#         GOTO CKTLLNUP (LOADS THE LLN FIELD IN THE CKTSEG OF THE DATABASE)
-#         CIRCUIT = CIRCUIT 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 LLN/12
-         #MATCH CIRCUIT? update LLN
-         CSR_CKT_tbl['LLN']=line[77:89]
-         CSR_CKT_tbl['INPUT_RECORDS']+=","+str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
+        csr_ckt_records[cktKeys[current_ckt_key_concat]]['LLN']=line[77:89]
+        #writelog("update csr_ckt",output_log)  
+        
     elif tfid == 'TLI ': 
-#         GOTO CKTTLIUP (LOADS THE TLI FIELD IN THE CKTSEG OF THE DATABASE)
-#         CIRCUIT = CIRCUIT 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 TLI/12
-         #MATCH CIRCUIT? update tli
-         CSR_CKT_tbl['TLI']=line[77:89]
-         CSR_CKT_tbl['INPUT_RECORDS']+=","+str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
+        csr_ckt_records[cktKeys[current_ckt_key_concat]]['TLI']=line[77:89]
+        #writelog("update csr_ckt",output_log)  
+        
     elif tfid == 'PICX': 
-#         GOTO CKTPICXUP (LOADS THE PICX FIELD IN THE CKTSEG OF THE DATABASE)
-#         CIRCUIT = CIRCUIT 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 PICX/3
-         #MATCH CIRCUIT? update picx
-         CSR_CKT_tbl['PICX']=line[77:80]
-         CSR_CKT_tbl['INPUT_RECORDS']+=","+str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
+        csr_ckt_records[cktKeys[current_ckt_key_concat]]['PICX']=line[77:80]
+        #writelog("update csr_ckt",output_log)  
+        
     elif tfid == 'HML ': 
-#         GOTO CKTHMLUP (LOADS THE HML FIELD IN THE CKTSEG OF THE DATABASE)
-#         CIRCUIT = CIRCUIT 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 HML/40
-          #MATCH CIRCUIT? update hml
-         CSR_CKT_tbl['HML']=line[77:117]
-         CSR_CKT_tbl['INPUT_RECORDS']+=","+str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
+        csr_ckt_records[cktKeys[current_ckt_key_concat]]['HML']=line[77:117]
+        #writelog("update csr_ckt",output_log)  
+        
     elif tfid == 'HTG ': 
-#         GOTO CKTHTGUP (LOADS THE HTG FIELD IN THE CKTSEG OF THE DATABASE)
-#         CIRCUIT = CIRCUIT 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 HTG/40
-          #MATCH CIRCUIT? update htg
-         CSR_CKT_tbl['HTG']=line[77:117]
-         CSR_CKT_tbl['INPUT_RECORDS']+=","+str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
+        csr_ckt_records[cktKeys[current_ckt_key_concat]]['HTG']=line[77:117]
+        #writelog("update csr_ckt",output_log)  
+        
     elif tfid == 'TN  ': 
-#         GOTO CKTTNUP (LOADS THE TN FIELD IN THE CKTSEG OF THE DATABASE)
-#         CIRCUIT = CIRCUIT 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 TN/12
-          #MATCH CIRCUIT? update tn
-         CSR_CKT_tbl['TN']=line[77:89]
-         CSR_CKT_tbl['INPUT_RECORDS']+=","+str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
+        csr_ckt_records[cktKeys[current_ckt_key_concat]]['TN']=line[77:89]
+        #writelog("update csr_ckt",output_log)  
+        
     elif tfid == 'TER ': 
-#         GOTO CKTTERUP (LOADS THE TER FIELD IN THE CKTSEG OF THE DATABASE)
-#         CIRCUIT = CIRCUIT 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 TER/4
-          #MATCH CIRCUIT? update ter
-         CSR_CKT_tbl['TER']=line[77:81]
-         CSR_CKT_tbl['INPUT_RECORDS']+=","+str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
+        csr_ckt_records[cktKeys[current_ckt_key_concat]]['TER']=line[77:81]
+        #writelog("update csr_ckt",output_log)  
+        
     elif tfid == 'STN ': 
-#         GOTO CKTSTNUP (LOADS THE STN FIELD IN THE CKTSEG OF THE DATABASE)
-#         CIRCUIT = CIRCUIT 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 STN/24
-          #MATCH CIRCUIT? update stn
-         CSR_CKT_tbl['STN']=line[77:91]
-         CSR_CKT_tbl['INPUT_RECORDS']+=","+str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
+        csr_ckt_records[cktKeys[current_ckt_key_concat]]['STN']=line[77:91]
+        #writelog("update csr_ckt",output_log)  
+        
     elif tfid == 'SFN ': 
-#         GOTO CKTSFNUP (LOADS THE SFN FIELD IN THE CKTSEG OF THE DATABASE)
-#         CIRCUIT = CIRCUIT 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 SFN/4
-          #MATCH CIRCUIT? update sfn
-         CSR_CKT_tbl['SFN']=line[77:81]  
-         CSR_CKT_tbl['INPUT_RECORDS']+=","+str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
+        csr_ckt_records[cktKeys[current_ckt_key_concat]]['SFN']=line[77:81]
+        #writelog("update csr_ckt",output_log)  
+        
     elif tfid == 'SFG ': 
-#         GOTO CKTSFGUP (LOADS THE SFG FIELD IN THE CKTSEG OF THE DATABASE)
-#         CIRCUIT = CIRCUIT 
 #         FIXFORM X-225 X5 X6 X13 X42 X4 X1 SFG/6
-          #MATCH CIRCUIT? update sfg
-         CSR_CKT_tbl['SFG']=line[77:83] 
-         CSR_CKT_tbl['INPUT_RECORDS']+=","+str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
+        csr_ckt_records[cktKeys[current_ckt_key_concat]]['SFG']=line[77:83] 
+        #writelog("update csr_ckt",output_log)  
+        
     elif tfid == 'CKR ': 
-#         GOTO CKTCKRUP (LOADS THE CKR FIELD IN THE CKTSEG OF THE DATABASE)
-#         CIRCUIT = CIRCUIT 
 #        FIXFORM X-225 X5 X6 X13 X42 X4 X1 CKR/36
-         #MATCH CIRCUIT? update CKR
-         CSR_CKT_tbl['CKR']=line[77:113]
-         CSR_CKT_tbl['INPUT_RECORDS']+=","+str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
+        csr_ckt_records[cktKeys[current_ckt_key_concat]]['CKR']=line[77:113]
+        #writelog("update csr_ckt",output_log)  
+        
     elif tfid == 'GSZ ': 
-#         GOTO CKTGSZUP logic below
-#        -************************************************************
-#        -* PROCESS '401506' RECORDS FROM CASE CKTFID WHEN CFID CONTAINS 'GSZ'
-#        -* THIS CASE READS THE FLOATED FID AND LOADS THE GSZ FIELD IN THE
-#        -* CKTSEG OF THE DATABASE
-#        -************************************************************
-#        CIRCUIT = CIRCUIT 
 #        FIXFORM X-225 X5 X6 X13 X42 X4 X1 GSZ/3
-        #7+5+6+13+42+4+1  =78 
-         CSR_CKT_tbl['GSZ']=line[77:80]
-         CSR_CKT_tbl['INPUT_RECORDS']+=","+str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
+        csr_ckt_records[cktKeys[current_ckt_key_concat]]['GSZ']=line[77:80]
+        #writelog("update csr_ckt",output_log)  
+        
     elif tfid == 'NHN ': 
-#         GOTO CKTNHNUP logic below:
-#        -************************************************************
-#        -* PROCESS '401506' RECORDS FROM CASE CKTFID WHEN CFID CONTAINS 'NHN'
-#        -* THIS CASE READS THE FLOATED FID AND LOADS THE NHN FIELD IN THE
-#        -* CKTSEG OF THE DATABASE
-#        -************************************************************
-#        COMPUTE
-#        CIRCUIT = CIRCUIT 
 #        FIXFORM X-225 X5 X6 X13 X42 X4 X1 NHN/12
-         CSR_CKT_tbl['NHN']=line[77:89]
-         CSR_CKT_tbl['INPUT_RECORDS']+=","+str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
+        csr_ckt_records[cktKeys[current_ckt_key_concat]]['NHN']=line[77:89]
+        #writelog("update csr_ckt",output_log)  
+        
     elif tfid == 'PTN ': 
-#         GOTO CKTPTNUP  logic below
-#        -************************************************************
-#        -* PROCESS '401506' RECORDS FROM CASE CKTFID WHEN CFID CONTAINS 'PTN'
-#        -* THIS CASE READS THE FLOATED FID AND LOADS THE PTN FIELD IN THE
-#        -* CKTSEG OF THE DATABASE
-#        -************************************************************
-#        COMPUTE
-#        CIRCUIT = CIRCUIT 
 #        FIXFORM X-225 X5 X6 X13 X42 X4 X1 PTN/12
-         CSR_CKT_tbl['PTN']=line[77:89] 
-         CSR_CKT_tbl['INPUT_RECORDS']+=","+str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
+        csr_ckt_records[cktKeys[current_ckt_key_concat]]['PTN']=line[77:89] 
+        #writelog("update csr_ckt",output_log)  
+        
     elif tfid == 'SBN ': 
-#         GOTO CKTSBNUP  logic below 
-#        -************************************************************
-#        -* PROCESS '401506' RECORDS FROM CASE CKTFID WHEN CFID CONTAINS 'SBN'
-#        -* THIS CASE READS THE FLOATED FID AND LOADS THE SBN FIELD IN THE
-#        -* CKTSEG OF THE DATABASE
-#        -************************************************************
-#        COMPUTE
-#        CIRCUIT = CIRCUIT 
 #        FIXFORM X-225 X5 X6 X13 X42 X4 X1 SBN/40
-         CSR_CKT_tbl['SBN']=line[77:117]
-         CSR_CKT_tbl['INPUT_RECORDS']+=","+str(record_id)
-         process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
+        csr_ckt_records[cktKeys[current_ckt_key_concat]]['SBN']=line[77:117]
+        #writelog("update csr_ckt",output_log)  
+        
     else:
-#         GOTO CKTFID logic below
-#        -************************************************************
-#        -* PROCESS '401506' RECORDS FROM CASE FIDDRVR WHEN Level EQUALS 'C'.
-#        -* THIS CASE READS THE FLOATED FID AND LOADS THE CFID AND FID_DATA
-#        -* FIELD IN CFIDREC SEGMENT OF THE DATABASE.
-#        -************************************************************
-#        COMPUTE
 #        FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X42
 #        FIXFORM CFID/A4 X1 FID_DATA/36
-#    SEGMENT=CFIDSEG
         if Level == 'C':
             initialize_tbl('CSR_CFID_tbl')
-#            initialize_CFID_tbl()
-#            debug("CSR_CFID_tbl:"+record_id)
             CSR_CFID_tbl['CFID']=line[72:76]
             CSR_CFID_tbl['FID_DATA']=line[77:113]
-            CSR_CFID_tbl['INPUT_RECORDS']+=","+str(record_id)
-            process_update_table("CAIMS_CSR_CFID", CSR_CFID_tbl, CSR_CFID_DEFN_DICT,con,output_log)
-#                     INSERT data here                 
+            CSR_CFID_tbl['INPUT_RECORDS']=str(record_id)
  
+            CSR_CFID_tbl['ID']=csr_cfid_sq
+            CSR_CFID_tbl['CKT_ID']=cktKeys[current_ckt_key_concat]  #parent id is id from CAIMS_CSR_CKT
+            csr_cfid_records[csr_cfid_sq]= copy.deepcopy(CSR_CFID_tbl)
+            csr_cfid_sq += 1            
+            #writelog("insert csr_cfid",output_log)            
 
 def process_USOCDRVR_36():
-#    debug("****** procedure==>  "+whereami()+" ******")  
+
     "151000"
     global Level 
     global record_id
+    
 #    FIXFORM X-225 X5 X6 X13 X31
 #    FIXFORM X8 X6 X2 TUSOC/5 X121 X6 X7
 #    FIXFORM X8 X1
@@ -1338,125 +1213,98 @@ def process_USOCDRVR_36():
             process_COSUSOC_36()
      
 def process_CKTUSOC_36():    
-#    debug("****** procedure==>  "+whereami()+" ******")  
-#    UPDATES THE CKTUSOC SEGMENT
     global Level
     global record_id
     global cuact
     global output_log
+    global current_ckt_key_concat
+    global cktKeys
+    global csr_ckt_records
+    global current_cktusoc_key_concat
+    global cktusocKeys
+    global csr_cktusoc_records
+    global csr_cktusoc_sq
+
 #    FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X31
 #    FIXFORM CUDINSTCC/8 CUSOCQTY/Z6 CURES1/2 CUSOC/5 X121
 #    FIXFORM CURES2/6 X7 CUDACTCC/8 CUACT/1
 
-    
     if Level in ('L', 'LU'):
-#        GOTO LOCUSOC_36 logic below
-    #    -************************************************************
-    #    -*  THIS CASE PROCESSES THE 1510 LOCATION Level USOCS FROM CASE CKTUSOC
-    #    -*   IF Level EQUALS 'L' OR 'LU'
-    #    -************************************************************
-#    SEGMENT=USOCSEG  =LOCUSOC_36
         process_LOCUSOC_36()
-    else:      #end LOCUSOC LOGIC
-#    SEGMENT=CKTUSOC    
-        initialize_tbl('CSR_CKTUSOC_tbl')
-#        initialize_CKTUSOC_tbl()
-        Level = 'CU'
+    else:
     #    FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X31
     #    FIXFORM CUDINSTCC/8 CUSOCQTY/Z5 CUSOC/5 X137
     #    FIXFORM CUDACTCC/8 CUACT/1
-#        debug("CSR_CKTUSOC_tbl:"+record_id)
+            
+        Level = 'CU'
+        cuact=line[224:225]               
+        
+        if cuact == 'D':
+            pass
+        else:
+            initialize_tbl('CSR_CKTUSOC_tbl')
+        
         CSR_CKTUSOC_tbl['CUDINSTCC']=line[61:69]
         CSR_CKTUSOC_tbl['CUSOCQTY']=convertnumber(line[69:74],0)
         CSR_CKTUSOC_tbl['CUSOC']=line[74:79]
         CSR_CKTUSOC_tbl['CUDACTCC']=line[216:224]
-        cuact=line[224:225]
+            
         CSR_CKTUSOC_tbl['CUACT']=cuact
         CSR_CKTUSOC_tbl['INPUT_RECORDS']=str(record_id) 
         
-        if cuact == 'D':
-            pass #goto top
-        else:
-            process_insert_table("CAIMS_CSR_CKTUSOC", CSR_CKTUSOC_tbl, CSR_CKTUSOC_DEFN_DICT,con,output_log)          
+            parentId=cktKeys[current_ckt_key_concat]
+            cktusoc_key_concat=str(parentId) + CSR_CKTUSOC_tbl['CUSOC']
+            current_cktusoc_key_concat=cktusoc_key_concat
+
+            CSR_CKTUSOC_tbl['ID']=csr_cktusoc_sq
+            CSR_CKTUSOC_tbl['CKT_ID']=parentId
+            csr_cktusoc_records[csr_cktusoc_sq]= copy.deepcopy(CSR_CKTUSOC_tbl)
+            csr_cktusoc_sq += 1  
+            #writelog("insert csr_cktusoc",output_log)  
     
 def process_COSUSOC_36():    
-#    debug("****** procedure==>  "+whereami()+" ******")  
     global Level, record_id
     global output_log
     global CSR_CKT_exists
+    global current_ckt_key_concat
+    global cktKeys
+    global csr_ckt_records
+    
 #    FIXFORM X-225 X5 X6 X13 X31
 #    FIXFORM COSDINSTCC/8 COSUSOCQTY/Z6 COSRES1/2 COS_USOC/5 X121
 #    FIXFORM COSRES2/6 X7 COSDACTCC/8 COSACT/1
-
-#    -************************************************************
-#    -*  THIS CASE PROCESSES CIRCUIT Level USOC RECORDS 401510. AND
-#    -*  UPDATES THE CKTUSOC SEGMENT. SET Level TO 'CO'.
-#    -*  CHECK TO SEE IF THIS IS A CIRCUIT Level RECORD OR LOCATION Level
-#    -************************************************************
     if Level in ('L','LU'):
          process_LOCUSOC_36()  
-#        -************************************************************
-#        -*  THIS CASE PROCESSES THE 1510 LOCATION Level USOCS FROM CASE CKTUSOC
-#        -*   IF Level EQUALS 'L' OR 'LU'
-#        -************************************************************
- 
-
     else:
         Level = 'CO'
-        
-        #check cosact
         if line[224:225] == 'D':
             pass
         else:
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['COSDINSTCC']=line[61:69]
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['COSUSOCQTY']=convertnumber(line[69:75],0)
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['COSRES1']=line[75:77]
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['COS_USOC']=line[77:82]
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['COSRES2']=line[203:209]
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['COSDACTCC']=line[216:224]
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['COSACT']=line[224:225]
             
-            CSR_CKT_tbl['COSDINSTCC']=line[61:69]
-            CSR_CKT_tbl['COSUSOCQTY']=convertnumber(line[69:75],0)
-            CSR_CKT_tbl['COSRES1']=line[75:77]
-            CSR_CKT_tbl['COS_USOC']=line[77:82]
-            CSR_CKT_tbl['COSRES2']=line[203:209]
-            CSR_CKT_tbl['COSDACTCC']=line[216:224]
-            CSR_CKT_tbl['COSACT']=line[224:225]
-            CSR_CKT_tbl['INPUT_RECORDS']+=","+str(record_id)
-#        else:
-#            initialize_CKT_tbl();
-#            CSR_CKT_tbl['COSDINSTCC']=line[61:69]
-#            CSR_CKT_tbl['COSUSOCQTY']=line[69:75]
-#            CSR_CKT_tbl['COSRES1']=line[75:77]
-#            CSR_CKT_tbl['COS_USOC']=line[77:82]
-#            CSR_CKT_tbl['COSRES2']=line[203:209]
-#            CSR_CKT_tbl['COSDACTCC']=line[216:224]
-#            CSR_CKT_tbl['COSACT']=line[224:225]
-#            CSR_CKT_tbl['INPUT_RECORDS']=str(record_id)
-        
+            #writelog("update csr_ckt",output_log)
 
-        #ON MATCH UPDATE 
-        #ON NOMATCH REJECT
-
-#        if CSR_CKT_tbl['COSACT'] == 'D':
-#            pass #GOTO TOP
-#        else:  
-#            if CSR_CKT_exists:
-#                process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
-#                
-#            else: 
-#                writelog("ERROR: No CKT record exists for current update to CAIMS_CSR_CKT")
-#                #doesnt exist
-##                process_insert_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
-#                 
-#                
-#            MATCH CIRCUIT
-#              ON MATCH UPDATE COSDINSTCC COSUSOCQTY COSRES1
-#              ON MATCH UPDATE COS_USOC COSRES2 COSDACTCC COSACT
-# 
 def process_LOCUSOC_36():     
-#    debug("****** procedure==>  "+whereami()+" ******")
     global Level, usoccnt, uact
     global record_ID
     global output_log
     global usoccnt,ucode,usoc_cnt, Level
+    global current_loc_key_concat    
+    global current_usoc_key_concat
+    global locKeys
+    global usocKeys
+    global csr_usoc_records
+    global csr_usoc_sq
+
  #USOC
-    initialize_tbl('CSR_USOC_tbl')
-#    initialize_USOC_tbl()
+    if Level in ('L','LU'):
+        
     usoccnt = usoccnt + 1
     usoc_cnt = usoccnt
     ucode = '  '
@@ -1465,13 +1313,13 @@ def process_LOCUSOC_36():
 #    FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X31
 #    FIXFORM UDINSTCC/8 QUSOC/Z6 USOCRES1/2 USOC/5 X121
 #    FIXFORM USOCRES2/6 X7 UDACTCC/8 UACT/A1
-#    debug("CSR_USOC_tbl:"+record_id)
-
     uact=line[224:225]
 
     if uact == 'D':
         pass #GOTO TOP
     else:     
+            initialize_tbl('CSR_USOC_tbl')
+            
         CSR_USOC_tbl['UDINSTCC']=line[61:69]
         CSR_USOC_tbl['QUSOC']=convertnumber(line[69:75],0)
         CSR_USOC_tbl['USOCRES1']=line[75:76]
@@ -1481,53 +1329,55 @@ def process_LOCUSOC_36():
         CSR_USOC_tbl['UDACTCC']=line[216:224]
         CSR_USOC_tbl['UACT']=uact
         CSR_USOC_tbl['INPUT_RECORDS']=str(record_id) 
-#        process_insert_table("CAIMS_CSR_USOC", CSR_USOC_tbl, CSR_USOC_DEFN_DICT,con,output_log)
+
+            CSR_USOC_tbl['ID']=csr_usoc_sq
+            parentId=locKeys[current_loc_key_concat]                #Assign the parent id -- id from CAIMS_CSR_LOC
+            usoc_key_concat=str(parentId) + CSR_USOC_tbl['USOC']
+            usocKeys[usoc_key_concat]=csr_usoc_sq                   #Add Usoc Key for ufid segment parent
+            current_usoc_key_concat=usoc_key_concat
+            CSR_USOC_tbl['LOC_ID']=locKeys[current_loc_key_concat]
+            csr_usoc_records[csr_usoc_sq]= copy.deepcopy(CSR_USOC_tbl)
+            csr_usoc_sq += 1             
+            
+            #writelog("insert csr_usoc",output_log)
+            
             
 def process_USOCDRVR_TAX():
-#    debug("****** procedure==>  "+whereami()+" ******")
     "151600"
     global x_tbl
     global Level,record_id
     global usoc_cnt, ucode, cuact, cusocqty, uact, Level, circuit,cosact
     global output_log
+    global cktKeys, usocKeys, cktusocKeys
+    global current_ckt_key_concat, current_usoc_key_concat, current_cktusoc_key_concat
+    global csr_ckt_records, csr_usoc_records, csr_cktusoc_records
     
 #        FIXFORM X-225 X5 X6 X13 X31 X11 TUSOC/5 X121 X9
 #        FIXFORM X3 X2 X4 X1 X8
-    tusoc=line[72:77]
     if Level in ('L','LU'):
 #        GOTO LOCUSOC_TAX  logic below
 #        -************************************************************
 #        -*  THIS CASE PROCESSES THE 1516 LOCATION Level USOCS FROM CASE CKTUSOC
 #        -*   IF Level EQUALS 'L' OR 'LU'
 #        -************************************************************
-#SEGMENT=USOCSEG        
-#        usoc_cnt = usoc_cnt
-#        QUSOC = QUSOC
         ucode = '  '
         Level = 'LU'
 #        FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X31 X11
 #        FIXFORM USOC/5 X121 USO_FEDTAX/1 USO_STTAX/1 USO_CITYTAX/1
 #        FIXFORM USO_CNTYTAX/1 USO_STSLSTAX/1 USO_LSLSTAX/1 USO_SURTAX/1
 #        FIXFORM USO_FRANTAX/1 USO_OTHERTAX/1 X3 X2 X4 X1 X8
-#        debug("CSR_USOC_tbl:"+record_id)
-        CSR_USOC_tbl['USOC']=line[72:77]
-        CSR_USOC_tbl['USO_FEDTAX']=line[198:199]
-        CSR_USOC_tbl['USO_STTAX']=line[199:200]
-        CSR_USOC_tbl['USO_CITYTAX']=line[200:201]
-        CSR_USOC_tbl['USO_CNTYTAX']=line[201:202]
-        CSR_USOC_tbl['USO_STSLSTAX']=line[202:203]
-        CSR_USOC_tbl['USO_LSLSTAX']=line[203:204]
-        CSR_USOC_tbl['USO_SURTAX']=line[204:205]
-        CSR_USOC_tbl['USO_FRANTAX']=line[205:206]
-        CSR_USOC_tbl['USO_OTHERTAX']=line[206:207]
-        CSR_USOC_tbl['INPUT_RECORDS']+=","+str(record_id)
-        
-        if uact == 'D':
-            pass #GOTO TOP
-#        else:
-#            process_update_table("CAIMS_CSR_USOC", CSR_USOC_tbl, CSR_USOC_DEFN_DICT,con,output_log)
-#            update record
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['USOC']=line[72:77]
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['USO_FEDTAX']=line[198:199]
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['USO_STTAX']=line[199:200]
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['USO_CITYTAX']=line[200:201]
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['USO_CNTYTAX']=line[201:202]
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['USO_STSLSTAX']=line[202:203]
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['USO_LSLSTAX']=line[203:204]
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['USO_SURTAX']=line[204:205]
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['USO_FRANTAX']=line[205:206]
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['USO_OTHERTAX']=line[206:207]
 
+        #writelog("update csr_usoc",output_log)  
    
     elif tusoc.rstrip(' ') in ('UDP','U3P','U6P'):
 #        GOTO CKTUSOC_TAX  logic below
@@ -1537,31 +1387,23 @@ def process_USOCDRVR_TAX():
 #        -*  CHECK TO SEE IF THIS IS A CIRCUIT Level RECORD OR LOCATION Level
 #        -************************************************************
         Level = 'CU'
-        cuact = cuact
-        cusocqty = cusocqty
+        #cuact = cuact
+        #cusocqty = cusocqty
 #        SEGMENT=CKTUSOC
 #        FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X31 X11
 #        FIXFORM CUSOC/5 X121 CU_FEDTAX/1 CU_STTAX/1 CU_CITYTAX/1
 #        FIXFORM CU_CNTYTAX/1 CU_STSLSTAX/1 CU_LSLSTAX/1 CU_SURTAX/1
 #        FIXFORM CU_FRANTAX/1 CU_OTHERTAX/1 X3 X2 X4 X1 X8
-#        debug("CSR_CKTUSOC_tbl:"+record_id)
-        CSR_CKTUSOC_tbl['CUSOC']=line[72:77]
-        CSR_CKTUSOC_tbl['CU_FEDTAX']=line[198:199]
-        CSR_CKTUSOC_tbl['CU_STTAX']=line[199:200]
-        CSR_CKTUSOC_tbl['CU_CITYTAX']=line[200:201]
-        CSR_CKTUSOC_tbl['CU_CNTYTAX']=line[201:202]
-        CSR_CKTUSOC_tbl['CU_STSLSTAX']=line[202:203]
-        CSR_CKTUSOC_tbl['CU_LSLSTAX']=line[203:204]
-        CSR_CKTUSOC_tbl['CU_SURTAX']=line[204:205]
-        CSR_CKTUSOC_tbl['CU_FRANTAX']=line[205:206]
-        CSR_CKTUSOC_tbl['CU_OTHERTAX']=line[206:207]
-        CSR_CKTUSOC_tbl['INPUT_RECORDS']+=","+str(record_id)
-        
-        if cuact == 'D':
-            pass #GOTO TOP
-        else:
-            process_update_table("CAIMS_CSR_CKTUSOC", CSR_CKTUSOC_tbl, CSR_CKTUSOC_DEFN_DICT,con,output_log)
-#            update record
+        csr_cktusoc_records[cktusocKeys[current_cktusoc_key_concat]]['CUSOC']=line[72:77]
+        csr_cktusoc_records[cktusocKeys[current_cktusoc_key_concat]]['CU_FEDTAX']=line[198:199]
+        csr_cktusoc_records[cktusocKeys[current_cktusoc_key_concat]]['CU_STTAX']=line[199:200]
+        csr_cktusoc_records[cktusocKeys[current_cktusoc_key_concat]]['CU_CITYTAX']=line[200:201]
+        csr_cktusoc_records[cktusocKeys[current_cktusoc_key_concat]]['CU_CNTYTAX']=line[201:202]
+        csr_cktusoc_records[cktusocKeys[current_cktusoc_key_concat]]['CU_STSLSTAX']=line[202:203]
+        csr_cktusoc_records[cktusocKeys[current_cktusoc_key_concat]]['CU_LSLSTAX']=line[203:204]
+        csr_cktusoc_records[cktusocKeys[current_cktusoc_key_concat]]['CU_SURTAX']=line[204:205]
+        csr_cktusoc_records[cktusocKeys[current_cktusoc_key_concat]]['CU_FRANTAX']=line[205:206]
+        csr_cktusoc_records[cktusocKeys[current_cktusoc_key_concat]]['CU_OTHERTAX']=line[206:207]
     
     else:
 #        GOTO COSUSOC_TAX   logic below
@@ -1578,35 +1420,33 @@ def process_USOCDRVR_TAX():
 #        FIXFORM COS_USOC/5 X121 COS_FEDTAX/1 COS_STTAX/1 COS_CITYTAX/1
 #        FIXFORM COS_CNTYTAX/1 COS_STSLSTAX/1 COS_LSLSTAX/1 COS_SURTAX/1
 #        FIXFORM COS_FRANTAX/1 COS_OTHERTAX/1 X3 X2 X4 X1 X8
-        
-#        debug("CSR_CKT_tbl:"+record_id)
-        CSR_CKT_tbl['COS_USOC']=line[72:77]
-        CSR_CKT_tbl['COS_FEDTAX']=line[198:199]
-        CSR_CKT_tbl['COS_STTAX']=line[199:200]
-        CSR_CKT_tbl['COS_CITYTAX']=line[200:201]
-        CSR_CKT_tbl['COS_CNTYTAX']=line[201:202]
-        CSR_CKT_tbl['COS_STSLSTAX']=line[202:203]
-        CSR_CKT_tbl['COS_LSLSTAX']=line[203:204]
-        CSR_CKT_tbl['COS_SURTAX']=line[204:205]
-        CSR_CKT_tbl['COS_FRANTAX']=line[205:206]
-        CSR_CKT_tbl['COS_OTHERTAX']=line[206:207]        
-        CSR_CKT_tbl['INPUT_RECORDS']+=","+str(record_id)
-        
         if cosact == 'D':
             pass #GOTO TOP
         else:
-            process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)        
-#            update record
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['COS_USOC']=line[72:77]
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['COS_FEDTAX']=line[198:199]
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['COS_STTAX']=line[199:200]
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['COS_CITYTAX']=line[200:201]
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['COS_CNTYTAX']=line[201:202]
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['COS_STSLSTAX']=line[202:203]
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['COS_LSLSTAX']=line[203:204]
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['COS_SURTAX']=line[204:205]
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['COS_FRANTAX']=line[205:206]
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['COS_OTHERTAX']=line[206:207]        
+
+            #writelog("update csr_ckt ",output_log)  
 
 
 def process_USOCDRVR_PLN():    
-#    debug("****** procedure==>  "+whereami()+" ******")
     "151700"
     global x_tbl
     global output_log
     global current_abbd_rec_key   
     global Level, record_id
     global usoccnt,usoc_cnt,ucode
+    global cktKeys, usocKeys, cktusocKeys
+    global current_ckt_key_concat, current_usoc_key_concat, current_cktusoc_key_concat
+    global csr_ckt_records, csr_usoc_records, csr_cktusoc_records
 #    FIXFORM X-225 X5 X6 X13 X31 X11 TUSOC/5 X26 X5 X5 X8 X8 X3
 #    FIXFORM X1 X5 X2 X1 X5 X26 X8 X1 X44    
     TUSOC=line[72:77]
@@ -1629,29 +1469,29 @@ def process_USOCDRVR_PLN():
 #        FIXFORM DSCNT_PCTGE/Z5.2 SYS_CPCTY/2 ADD_DIS_PL_IND/1
 #        FIXFORM SPL_OFR_PCTGE/Z5.2 SPL_OFR_IDENT/26 S_OFR_END_DAT/8
 #        FIXFORM PL_TAR_TYP_INDR/1 X44
-#        debug("CSR_USOC_tbl:"+record_id)
-        CSR_USOC_tbl['USOC']=line[72:77]
-        CSR_USOC_tbl['PLAN_ID']=line[77:103]
-        CSR_USOC_tbl['RQRD_PL_QTY']=convertnumber(line[103:108],0)
-        CSR_USOC_tbl['VAR_PL_QTY']=convertnumber(line[108:113],0)
-        CSR_USOC_tbl['TRM_STRT_DAT']=line[113:121]
-        CSR_USOC_tbl['TRM_END_DAT']=line[121:129]
-        CSR_USOC_tbl['LNGTH_OF_TRM']=convertnumber(line[129:132],0)
-        CSR_USOC_tbl['PL_TYP_INDR']=convertnumber(line[132:133],0)
-        CSR_USOC_tbl['DSCNT_PCTGE']=convertnumber(line[133:138],2)
-        CSR_USOC_tbl['SYS_CPCTY']=convertnumber(line[138:140],0)
-        CSR_USOC_tbl['ADD_DIS_PL_IND']=line[140:141]
-        CSR_USOC_tbl['SPL_OFR_PCTGE']=convertnumber(line[141:146],2)
-        CSR_USOC_tbl['SPL_OFR_IDENT']=line[146:172]
-        CSR_USOC_tbl['S_OFR_END_DAT']=line[172:180]
-        CSR_USOC_tbl['PL_TAR_TYP_INDR']=line[180:181]
-        CSR_USOC_tbl['INPUT_RECORDS']+=","+str(record_id)
         
         if uact == 'D':
             pass #GOTO TOP
-#        else:
+        else:
+            csr_usoc_records[usocKeys[current_usoc_key_concat]]['USOC']=line[72:77]
+            csr_usoc_records[usocKeys[current_usoc_key_concat]]['PLAN_ID']=line[77:103]
+            csr_usoc_records[usocKeys[current_usoc_key_concat]]['RQRD_PL_QTY']=convertnumber(line[103:108],0)
+            csr_usoc_records[usocKeys[current_usoc_key_concat]]['VAR_PL_QTY']=convertnumber(line[108:113],0)
+            csr_usoc_records[usocKeys[current_usoc_key_concat]]['TRM_STRT_DAT']=line[113:121]
+            csr_usoc_records[usocKeys[current_usoc_key_concat]]['TRM_END_DAT']=line[121:129]
+            csr_usoc_records[usocKeys[current_usoc_key_concat]]['LNGTH_OF_TRM']=convertnumber(line[129:132],0)
+            csr_usoc_records[usocKeys[current_usoc_key_concat]]['PL_TYP_INDR']=convertnumber(line[132:133],0)
+            csr_usoc_records[usocKeys[current_usoc_key_concat]]['DSCNT_PCTGE']=convertnumber(line[133:138],2)
+            csr_usoc_records[usocKeys[current_usoc_key_concat]]['SYS_CPCTY']=convertnumber(line[138:140],0)
+            csr_usoc_records[usocKeys[current_usoc_key_concat]]['ADD_DIS_PL_IND']=line[140:141]
+            csr_usoc_records[usocKeys[current_usoc_key_concat]]['SPL_OFR_PCTGE']=convertnumber(line[141:146],2)
+            csr_usoc_records[usocKeys[current_usoc_key_concat]]['SPL_OFR_IDENT']=line[146:172]
+            csr_usoc_records[usocKeys[current_usoc_key_concat]]['S_OFR_END_DAT']=line[172:180]
+            csr_usoc_records[usocKeys[current_usoc_key_concat]]['PL_TAR_TYP_INDR']=line[180:181]
+#            csr_usoc_records[usocKeys[current_usoc_key_concat]]['INPUT_RECORDS']+=","+str(record_id)
 #            process_update_table("CAIMS_CSR_USOC", CSR_USOC_tbl, CSR_USOC_DEFN_DICT,con,output_log)
-#            update record
+            #writelog("update csr_usoc 151700 ",output_log)  
+
 
     elif TUSOC.rstrip(' ') in ('UDP', 'U3P','U6P'):
 #        GOTO CKTUSOC_PLN  logic below
@@ -1662,38 +1502,33 @@ def process_USOCDRVR_PLN():
 #        -************************************************************
 #SEGMENT=CKTUSOC
         Level = 'CU' 
-        cuact = cuact 
-        cusocqty = cusocqty 
 #        FIXFORM X-225 ACNA/A5 EOB_DATE/A6 BAN/A13 X31 X11
 #        FIXFORM CUSOC/5 CU_PLAN_ID/26 CU_RQRD_PL_QTY/5 CU_VAR_PL_QTY/5
 #        FIXFORM CU_TRM_STRT_DAT/8 CU_TRM_END_DAT/8 CU_LNGTH_OF_TRM/3
 #        FIXFORM CU_PL_TYP_INDR/1 CU_DSCNT_PCTGE/Z5.2 CU_SYS_CPCTY/2
 #        FIXFORM CU_ADD_DIS_PL_IND/1 CU_SPL_OFR_PCTGE/Z5.2 CU_SPL_OFR_IDENT/26
 #        FIXFORM CU_S_OFR_END_DAT/8 CU_PL_TAR_TYP_INDR/1 X44
-#        debug("CSR_CKTUSOC_tbl:"+record_id)
-        CSR_CKTUSOC_tbl['CUSOC']=line[72:77]
-        CSR_CKTUSOC_tbl['CU_PLAN_ID']=line[77:103]
-        CSR_CKTUSOC_tbl['CU_RQRD_PL_QTY']=convertnumber(line[103:108],0)
-        CSR_CKTUSOC_tbl['CU_VAR_PL_QTY']=convertnumber(line[108:113],0)
-        CSR_CKTUSOC_tbl['CU_TRM_STRT_DAT']=line[113:121]
-        CSR_CKTUSOC_tbl['CU_TRM_END_DAT']=line[121:129]
-        CSR_CKTUSOC_tbl['CU_LNGTH_OF_TRM']=convertnumber(line[129:132],0)
-        CSR_CKTUSOC_tbl['CU_PL_TYP_INDR']=line[132:133]
-        CSR_CKTUSOC_tbl['CU_DSCNT_PCTGE']=convertnumber(line[133:138],2)
-        CSR_CKTUSOC_tbl['CU_SYS_CPCTY']=convertnumber(line[138:140],0)
-        CSR_CKTUSOC_tbl['CU_ADD_DIS_PL_IND']=line[140:141]
-        CSR_CKTUSOC_tbl['CU_SPL_OFR_PCTGE']=convertnumber(line[141:146],2)
-        CSR_CKTUSOC_tbl['CU_SPL_OFR_IDENT']=line[146:172]
-        CSR_CKTUSOC_tbl['CU_S_OFR_END_DAT']=line[172:180]
-        CSR_CKTUSOC_tbl['CU_PL_TAR_TYP_INDR']=line[180:181]
-        CSR_CKTUSOC_tbl['INPUT_RECORDS']+=","+str(record_id)
-        
         if cuact == 'D':
             pass  #GOTO TOP
         else:
-            process_update_table("CAIMS_CSR_CKTUSOC", CSR_CKTUSOC_tbl, CSR_CKTUSOC_DEFN_DICT,con,output_log)
-#            update record
+            csr_cktusoc_records[cktusocKeys[current_cktusoc_key_concat]]['CUSOC']=line[72:77]
+            csr_cktusoc_records[cktusocKeys[current_cktusoc_key_concat]]['CU_PLAN_ID']=line[77:103]
+            csr_cktusoc_records[cktusocKeys[current_cktusoc_key_concat]]['CU_RQRD_PL_QTY']=convertnumber(line[103:108],0)
+            csr_cktusoc_records[cktusocKeys[current_cktusoc_key_concat]]['CU_VAR_PL_QTY']=convertnumber(line[108:113],0)
+            csr_cktusoc_records[cktusocKeys[current_cktusoc_key_concat]]['CU_TRM_STRT_DAT']=line[113:121]
+            csr_cktusoc_records[cktusocKeys[current_cktusoc_key_concat]]['CU_TRM_END_DAT']=line[121:129]
+            csr_cktusoc_records[cktusocKeys[current_cktusoc_key_concat]]['CU_LNGTH_OF_TRM']=convertnumber(line[129:132],0)
+            csr_cktusoc_records[cktusocKeys[current_cktusoc_key_concat]]['CU_PL_TYP_INDR']=line[132:133]
+            csr_cktusoc_records[cktusocKeys[current_cktusoc_key_concat]]['CU_DSCNT_PCTGE']=convertnumber(line[133:138],2)
+            csr_cktusoc_records[cktusocKeys[current_cktusoc_key_concat]]['CU_SYS_CPCTY']=convertnumber(line[138:140],0)
+            csr_cktusoc_records[cktusocKeys[current_cktusoc_key_concat]]['CU_ADD_DIS_PL_IND']=line[140:141]
+            csr_cktusoc_records[cktusocKeys[current_cktusoc_key_concat]]['CU_SPL_OFR_PCTGE']=convertnumber(line[141:146],2)
+            csr_cktusoc_records[cktusocKeys[current_cktusoc_key_concat]]['CU_SPL_OFR_IDENT']=line[146:172]
+            csr_cktusoc_records[cktusocKeys[current_cktusoc_key_concat]]['CU_S_OFR_END_DAT']=line[172:180]
+            csr_cktusoc_records[cktusocKeys[current_cktusoc_key_concat]]['CU_PL_TAR_TYP_INDR']=line[180:181]
+            csr_cktusoc_records[cktusocKeys[current_cktusoc_key_concat]]['INPUT_RECORDS']+=","+str(record_id)
  
+            #writelog("update csr_cktusoc 151700 ",output_log)  
 #            
     else:
 #        GOTO COSUSOC_PLN logic below
@@ -1705,8 +1540,8 @@ def process_USOCDRVR_PLN():
  
 #        SEGMENT=CKTSEG 
         Level = 'CO' 
-        circuit = circuit 
-        cosact = cosact 
+#        circuit = circuit 
+#        cosact = cosact 
 #        FIXFORM X-225 X5 X6 X13 X31 X11
 #        FIXFORM COS_USOC/5 CO_PLAN_ID/26 CO_RQRD_PL_QTY/5 CO_VAR_PL_QTY/5
 #        FIXFORM CO_TRM_STRT_DAT/8 CO_TRM_END_DAT/8 CO_LNGTH_OF_TRM/3
@@ -1714,39 +1549,39 @@ def process_USOCDRVR_PLN():
 #        FIXFORM CO_ADD_DIS_PL_IND/1 CO_SPL_OFR_PCTGE/Z5.2 CO_SPL_OFR_IDENT/26
 #        FIXFORM CO_S_OFR_END_DAT/8 CO_PL_TAR_TYP_INDR/1 X44
         
-#        debug("CSR_CKT_tbl:"+record_id)
-        CSR_CKT_tbl['COS_USOC']=line[72:77]
-        CSR_CKT_tbl['CO_PLAN_ID']=line[77:103]
-        CSR_CKT_tbl['CO_RQRD_PL_QTY']=convertnumber(line[103:108],0)
-        CSR_CKT_tbl['CO_VAR_PL_QTY']=convertnumber(line[108:113],0)
-        CSR_CKT_tbl['CO_TRM_STRT_DAT']=line[113:121]
-        CSR_CKT_tbl['CO_TRM_END_DAT']=line[121:129]
-        CSR_CKT_tbl['CO_LNGTH_OF_TRM']=convertnumber(line[129:132],0)
-        CSR_CKT_tbl['CO_PL_TYP_INDR']=line[132:133]
-        CSR_CKT_tbl['CO_DSCNT_PCTGE']=convertnumber(line[133:138],2)
-        CSR_CKT_tbl['CO_SYS_CPCTY']=convertnumber(line[138:140],0)
-        CSR_CKT_tbl['CO_ADD_DIS_PL_IND']=line[140:141]
-        CSR_CKT_tbl['CO_SPL_OFR_PCTGE']=convertnumber(line[141:146],2)
-        CSR_CKT_tbl['CO_SPL_OFR_IDENT']=line[146:172]
-        CSR_CKT_tbl['CO_S_OFR_END_DAT']=line[172:180]
-        CSR_CKT_tbl['CO_PL_TAR_TYP_INDR']=line[180:181]
-        CSR_CKT_tbl['INPUT_RECORDS']+=","+str(record_id)
-            
-            
         if cosact == 'D':
             pass  #GOTO TOP
         else:
-            process_update_table("CAIMS_CSR_CKT", CSR_CKT_tbl, CSR_CKT_DEFN_DICT,con,output_log)
-#            update data
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['COS_USOC']=line[72:77]
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['CO_PLAN_ID']=line[77:103]
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['CO_RQRD_PL_QTY']=convertnumber(line[103:108],0)
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['CO_VAR_PL_QTY']=convertnumber(line[108:113],0)
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['CO_TRM_STRT_DAT']=line[113:121]
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['CO_TRM_END_DAT']=line[121:129]
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['CO_LNGTH_OF_TRM']=convertnumber(line[129:132],0)
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['CO_PL_TYP_INDR']=line[132:133]
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['CO_DSCNT_PCTGE']=convertnumber(line[133:138],2)
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['CO_SYS_CPCTY']=convertnumber(line[138:140],0)
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['CO_ADD_DIS_PL_IND']=line[140:141]
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['CO_SPL_OFR_PCTGE']=convertnumber(line[141:146],2)
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['CO_SPL_OFR_IDENT']=line[146:172]
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['CO_S_OFR_END_DAT']=line[172:180]
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['CO_PL_TAR_TYP_INDR']=line[180:181]
+            csr_ckt_records[cktKeys[current_ckt_key_concat]]['INPUT_RECORDS']+=","+str(record_id)            
+
+            #writelog("update csr_ckt 151700",output_log)  
+
  
 def  process_TYP1520():
-    #    debug("****** procedure==>  "+whereami()+" ******")
     "152000"
     global x_tbl
     global output_log
     global current_abbd_rec_key   
     global Level, record_id
     global usoccnt,usoc_cnt,ucode
+    global usocKeys
+    global current_usoc_key_concat
+    global csr_usoc_records
 #    FIXFORM X-225 X5 X6 X13 X31 X11 TUSOC/5 X26 X5 X5 X8 X8 X3
 #    FIXFORM X1 X5 X2 X1 X5 X26 X8 X1 X44    
 #    -************************************************************
@@ -1796,34 +1631,36 @@ def  process_TYP1520():
     #    FIXFORM ACC_TYPE/1
     #    FIXFORM LOPCT/Z6.3 RATE_ZN_LOC/1 MBIPVAR/3 X6
     elif record_id == '152000':         
-         CSR_USOC_tbl['UCODE']='  '  #spaces   
-         CSR_USOC_tbl['IRPCT']=convertnumber(line[67:73] ,3)
-         CSR_USOC_tbl['IRRATE']=convertnumber(line[73:84],4)
-         CSR_USOC_tbl['IRMRC']=convertnumber(line[84:95],2)
-         CSR_USOC_tbl['IAPCT']=convertnumber(line[95:101],3)
-         CSR_USOC_tbl['IARATE']=convertnumber(line[101:112],4)
-         CSR_USOC_tbl['IAMRC']=convertnumber(line[112:123],2) 
-         CSR_USOC_tbl['MBIPFIX']=line[123:126]         
-         CSR_USOC_tbl['UFAC_CHG']=line[126:127]         
-         CSR_USOC_tbl['RATE_ZN_IR']=line[127:128]             
-         CSR_USOC_tbl['USOC_RATE_SZN_IND_INT']=line[128:129]              
-         CSR_USOC_tbl['RAT_FCTR']=convertnumber(line[145:153],7)              
-         CSR_USOC_tbl['USOC_PFBAND2']=line[153:156]
-         CSR_USOC_tbl['USOC_PFIIRIA']=line[156:157]
-         CSR_USOC_tbl['USOC_PFIIR']=line[157:158]
-         CSR_USOC_tbl['USOC_PFIIA']=line[158:159]
-         CSR_USOC_tbl['USOC_PFIIAIA']=line[159:160] 
-         CSR_USOC_tbl['USOC_PFBAND1']=line[160:163]     
-         CSR_USOC_tbl['RATE_ZN_IA']=line[163:164]                  
-         CSR_USOC_tbl['LORATE']=convertnumber(line[180:191],4)   
-         CSR_USOC_tbl['LOMRC']=convertnumber(line[191:202],2)
-         CSR_USOC_tbl['USO_O_LOC_PCT']=convertnumber(line[202:205],0)
-         CSR_USOC_tbl['ACC_TYPE']=line[214:215]  
-         CSR_USOC_tbl['LOPCT']=convertnumber(line[215:221],3)
-         CSR_USOC_tbl['RATE_ZN_LOC']=line[221:222]   
-         CSR_USOC_tbl['MBIPVAR']=line[222:225] 
-         CSR_USOC_tbl['INPUT_RECORDS']+=","+str(record_id)
-         process_insert_table("CAIMS_CSR_USOC", CSR_USOC_tbl, CSR_USOC_DEFN_DICT,con,output_log)
+         csr_usoc_records[usocKeys[current_usoc_key_concat]]
+         csr_usoc_records[usocKeys[current_usoc_key_concat]]['UCODE']='  '  #spaces   
+         csr_usoc_records[usocKeys[current_usoc_key_concat]]['IRPCT']=convertnumber(line[67:73] ,3)
+         csr_usoc_records[usocKeys[current_usoc_key_concat]]['IRRATE']=convertnumber(line[73:84],4)
+         csr_usoc_records[usocKeys[current_usoc_key_concat]]['IRMRC']=convertnumber(line[84:95],2)
+         csr_usoc_records[usocKeys[current_usoc_key_concat]]['IAPCT']=convertnumber(line[95:101],3)
+         csr_usoc_records[usocKeys[current_usoc_key_concat]]['IARATE']=convertnumber(line[101:112],4)
+         csr_usoc_records[usocKeys[current_usoc_key_concat]]['IAMRC']=convertnumber(line[112:123],2) 
+         csr_usoc_records[usocKeys[current_usoc_key_concat]]['MBIPFIX']=line[123:126]         
+         csr_usoc_records[usocKeys[current_usoc_key_concat]]['UFAC_CHG']=line[126:127]         
+         csr_usoc_records[usocKeys[current_usoc_key_concat]]['RATE_ZN_IR']=line[127:128]             
+         csr_usoc_records[usocKeys[current_usoc_key_concat]]['USOC_RATE_SZN_IND_INT']=line[128:129]              
+         csr_usoc_records[usocKeys[current_usoc_key_concat]]['RAT_FCTR']=convertnumber(line[145:153],7)              
+         csr_usoc_records[usocKeys[current_usoc_key_concat]]['USOC_PFBAND2']=line[153:156]
+         csr_usoc_records[usocKeys[current_usoc_key_concat]]['USOC_PFIIRIA']=line[156:157]
+         csr_usoc_records[usocKeys[current_usoc_key_concat]]['USOC_PFIIR']=line[157:158]
+         csr_usoc_records[usocKeys[current_usoc_key_concat]]['USOC_PFIIA']=line[158:159]
+         csr_usoc_records[usocKeys[current_usoc_key_concat]]['USOC_PFIIAIA']=line[159:160] 
+         csr_usoc_records[usocKeys[current_usoc_key_concat]]['USOC_PFBAND1']=line[160:163]     
+         csr_usoc_records[usocKeys[current_usoc_key_concat]]['RATE_ZN_IA']=line[163:164]                  
+         csr_usoc_records[usocKeys[current_usoc_key_concat]]['LORATE']=convertnumber(line[180:191],4)   
+         csr_usoc_records[usocKeys[current_usoc_key_concat]]['LOMRC']=convertnumber(line[191:202],2)
+         csr_usoc_records[usocKeys[current_usoc_key_concat]]['USO_O_LOC_PCT']=convertnumber(line[202:205],0)
+         csr_usoc_records[usocKeys[current_usoc_key_concat]]['ACC_TYPE']=line[214:215]  
+         csr_usoc_records[usocKeys[current_usoc_key_concat]]['LOPCT']=convertnumber(line[215:221],3)
+         csr_usoc_records[usocKeys[current_usoc_key_concat]]['RATE_ZN_LOC']=line[221:222]   
+         csr_usoc_records[usocKeys[current_usoc_key_concat]]['MBIPVAR']=line[222:225]
+         
+         #writelog("update csr_usoc",output_log)  
+
     elif record_id =='152001' and prev_record_id == '152000':
 #                            [61:67]       [67:78]    
 #    FIXFORM ON BCTFCSRI X61 IRIA_PCT/Z6.3 IRIARATE/Z11.4
@@ -1849,45 +1686,44 @@ def  process_TYP1520():
 #     LOC_ADL_UAMT = IF VERSION_NBR GE 39
 #                    THEN (EDIT(ALOC_UAMT) * .01) ELSE 0.00
         "152001"
-        CSR_USOC_tbl['IRIA_PCT']=convertnumber(line[61:67],3) 
-        CSR_USOC_tbl['IRIARATE']=convertnumber(line[67:78],4) 
-        CSR_USOC_tbl['IRIAMRC']=convertnumber(line[78:89],2)
-        CSR_USOC_tbl['IAIA_PCT']=convertnumber(line[89:95],3) 
-        CSR_USOC_tbl['IAIARATE']=convertnumber(line[95:106],4)
-        CSR_USOC_tbl['IAIAMRC']=convertnumber(line[106:117],2)
-        CSR_USOC_tbl['DSCT_FAC_LOC']=convertnumber(line[145:150],4)
-        CSR_USOC_tbl['RATE_BAND']=line[153:156]
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['IRIA_PCT']=convertnumber(line[61:67],3) 
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['IRIARATE']=convertnumber(line[67:78],4) 
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['IRIAMRC']=convertnumber(line[78:89],2)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['IAIA_PCT']=convertnumber(line[89:95],3) 
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['IAIARATE']=convertnumber(line[95:106],4)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['IAIAMRC']=convertnumber(line[106:117],2)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['DSCT_FAC_LOC']=convertnumber(line[145:150],4)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['RATE_BAND']=line[153:156]
+       
         #        Many of the below do not match
         #        Many of the below do not match
         aloc_uamt=line[156:167]      
         if aloc_uamt.rstrip(' ') =='':
-            CSR_USOC_tbl['LOC_ADL_UAMT']='0.00'
+            csr_usoc_records[usocKeys[current_usoc_key_concat]]['LOC_ADL_UAMT']='0.00'
         else:
             x=convertnumber(aloc_uamt,2)
             if str(x) =='0.00':
-                CSR_USOC_tbl['LOC_ADL_UAMT']='0.00'
+                csr_usoc_records[usocKeys[current_usoc_key_concat]]['LOC_ADL_UAMT']='0.00'
             else:
                 y=float(x)*.01
-                CSR_USOC_tbl['LOC_ADL_UAMT']=convertnumber(y,2)
+                csr_usoc_records[usocKeys[current_usoc_key_concat]]['LOC_ADL_UAMT']=convertnumber(y,2)
  
             
-        CSR_USOC_tbl['PCT_ORIG_USG']=convertnumber(line[167:170],0) 
-        CSR_USOC_tbl['SPDF_INTERST']=convertnumber(line[171:176],4)
-        CSR_USOC_tbl['SPDF_INTRAST']=convertnumber(line[176:182],4) 
-        CSR_USOC_tbl['DISC_MONEY_INTERST']=convertnumber(line[182:186],2)
-        CSR_USOC_tbl['DISC_MONEY_INTRAST']=convertnumber(line[186:192],2) 
-        CSR_USOC_tbl['DISC_MONEY_LOCAL']=convertnumber(line[192:198],2)
-        CSR_USOC_tbl['RATE_ZN_IRIA']=line[221:222]      
-        CSR_USOC_tbl['RATE_ZN_IAIA']=line[222:223]   
-        CSR_USOC_tbl['INPUT_RECORDS']+=","+str(record_id)
-        process_insert_table("CAIMS_CSR_USOC", CSR_USOC_tbl, CSR_USOC_DEFN_DICT,con,output_log)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['PCT_ORIG_USG']=convertnumber(line[167:170],0) 
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['SPDF_INTERST']=convertnumber(line[171:176],4)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['SPDF_INTRAST']=convertnumber(line[176:181],4) 
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['DISC_MONEY_INTERST']=convertnumber(line[181:187],2)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['DISC_MONEY_INTRAST']=convertnumber(line[187:193],2) 
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['DISC_MONEY_LOCAL']=convertnumber(line[193:200],2)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['RATE_ZN_IRIA']=line[222:223]      
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['RATE_ZN_IAIA']=line[223:224]   
+        #csr_usoc_records[usocKeys[current_usoc_key_concat]]['INPUT_RECORDS']+=","+str(record_id)
+
+        #writelog("insert csr_usoc",output_log)
     else:
 #        error 01 record should always follow
         writelog("ERROR: a 152001 record should always follow a 152000.  Current record " \
         "is "+str(record_id) + " Previous record is "+str(prev_record_id),output_log)
-    
-     
-
     
 def  process_TYP1521():
     "152100"
@@ -1897,6 +1733,9 @@ def  process_TYP1521():
     global Level, record_id
     global usoccnt,usoc_cnt,ucode
     global a_pcfpct
+    global usocKeys
+    global current_usoc_key_concat
+    global csr_usoc_records
  
 
     if Level not in ('L','LU'):
@@ -1921,32 +1760,34 @@ def  process_TYP1521():
 #             [213:216]  [216:219]
 #    FIXFORM X3         A_PCFPCT/3        
             
-        CSR_USOC_tbl['QUSOC']=convertnumber(line[61:67],0)
-        CSR_USOC_tbl['IRPCT']=convertnumber(line[67:73],3)
-        CSR_USOC_tbl['IRRATE']=convertnumber(line[73:84],4)
-        CSR_USOC_tbl['IR_U_ML_RT']=convertnumber(line[84:95],4)
-        CSR_USOC_tbl['IRMRC']=convertnumber(line[95:106],2)
-        CSR_USOC_tbl['IAPCT']=convertnumber(line[106:112],3)
-        CSR_USOC_tbl['IARATE']=convertnumber(line[112:123],4)
-        CSR_USOC_tbl['IA_U_ML_RT']=convertnumber(line[123:134],4)
-        CSR_USOC_tbl['IAMRC']=convertnumber(line[134:145],2)
-        CSR_USOC_tbl['MBIPFIX']=line[145:148]
-        CSR_USOC_tbl['MBIPVAR']=line[148:151]
-        CSR_USOC_tbl['UCODE']='40'
-        CSR_USOC_tbl['UFAC_CHG']=line[151:152] 
-        CSR_USOC_tbl['RATE_ZN_IR']=line[152:153]
-        CSR_USOC_tbl['ACC_TYPE']=line[153:154]
-        CSR_USOC_tbl['RATE_ZN_IA']=line[154:155]
-        CSR_USOC_tbl['RAT_FCTR']=convertnumber(line[173:181],7)
-        CSR_USOC_tbl['USOC_PFBAND1']=line[203:206]                    
-        CSR_USOC_tbl['USOC_PFIIR']=line[206:207]
-        CSR_USOC_tbl['USOC_PFIIA']=line[207:208]
-        CSR_USOC_tbl['USOC_PFIIAIA']=line[208:209]
-        CSR_USOC_tbl['USOC_PFIIRIA']=line[209:210]
-        CSR_USOC_tbl['USOC_PFBAND2']=line[210:213]
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['QUSOC']=convertnumber(line[61:67],0)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['IRPCT']=convertnumber(line[67:73],3)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['IRRATE']=convertnumber(line[73:84],4)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['IR_U_ML_RT']=convertnumber(line[84:95],4)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['IRMRC']=convertnumber(line[95:106],2)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['IAPCT']=convertnumber(line[106:112],3)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['IARATE']=convertnumber(line[112:123],4)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['IA_U_ML_RT']=convertnumber(line[123:134],4)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['IAMRC']=convertnumber(line[134:145],2)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['MBIPFIX']=line[145:148]
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['MBIPVAR']=line[148:151]
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['UCODE']='40'
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['UFAC_CHG']=line[151:152] 
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['RATE_ZN_IR']=line[152:153]
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['ACC_TYPE']=line[153:154]
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['RATE_ZN_IA']=line[154:155]
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['RAT_FCTR']=convertnumber(line[173:181],7)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['USOC_PFBAND1']=line[203:206]                    
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['USOC_PFIIR']=line[206:207]
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['USOC_PFIIA']=line[207:208]
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['USOC_PFIIAIA']=line[208:209]
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['USOC_PFIIRIA']=line[209:210]
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['USOC_PFBAND2']=line[210:213]
         a_pcfpct=line[216:219]  #used in 1521001 record
-        CSR_USOC_tbl['INPUT_RECORDS']+=","+str(record_id)
-        process_insert_table("CAIMS_CSR_USOC", CSR_USOC_tbl, CSR_USOC_DEFN_DICT,con,output_log)
+#        CSR_USOC_tbl['INPUT_RECORDS']+=","+str(record_id)
+###        process_insert_table("CAIMS_CSR_USOC", CSR_USOC_tbl, CSR_USOC_DEFN_DICT,con,output_log)
+        #writelog("update csr_usoc 152100",output_log)  
+        
     elif record_id =='152101' and prev_record_id == '152100':
         "152101"       #     [61:67]       [67:78]        [78:89] 
 #    FIXFORM ON BCTFCSRI X61 IRIA_PCT/Z6.3 IRIARATE/Z11.4 IRIA_U_ML_RT/Z11.4
@@ -1970,34 +1811,30 @@ def  process_TYP1521():
 #    USOC_CNT = USOC_CNT;
 #    USOC = USOC;
  
-        CSR_USOC_tbl['IRIA_PCT']=convertnumber(line[61:67],3)
-        CSR_USOC_tbl['IRIARATE']=convertnumber(line[67:78],4)
-        CSR_USOC_tbl['IRIA_U_ML_RT']=convertnumber(line[78:89],4)
-        CSR_USOC_tbl['IRIAMRC']=convertnumber(line[89:100],2)
-        CSR_USOC_tbl['IAIA_PCT']=convertnumber(line[100:106],3)
-        CSR_USOC_tbl['IAIARATE']=convertnumber(line[106:117],4)
-        CSR_USOC_tbl['IAIA_U_ML_RT']=convertnumber(line[117:128],4)
-        CSR_USOC_tbl['IAIAMRC']=convertnumber(line[128:139],2)
-        CSR_USOC_tbl['LOPCT']=convertnumber(line[139:145],3)
-        CSR_USOC_tbl['LORATE']=convertnumber(line[145:156],4)
-        CSR_USOC_tbl['LO_U_ML_RT']=convertnumber(line[156:167],4)
-        CSR_USOC_tbl['LOMRC']=convertnumber(line[167:178],2)
-        CSR_USOC_tbl['RATE_ZN_IRIA']=line[178:179] 
-        CSR_USOC_tbl['RATE_ZN_IAIA']=line[179:180] 
-        CSR_USOC_tbl['RATE_ZN_LOC']=line[180:181]
-        CSR_USOC_tbl['DSCT_FAC_LOC']=convertnumber(line[181:186],4)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['IRIA_PCT']=convertnumber(line[61:67],3)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['IRIARATE']=convertnumber(line[67:78],4)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['IRIA_U_ML_RT']=convertnumber(line[78:89],4)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['IRIAMRC']=convertnumber(line[89:100],2)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['IAIA_PCT']=convertnumber(line[100:106],3)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['IAIARATE']=convertnumber(line[106:117],4)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['IAIA_U_ML_RT']=convertnumber(line[117:128],4)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['IAIAMRC']=convertnumber(line[128:139],2)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['LOPCT']=convertnumber(line[139:145],3)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['LORATE']=convertnumber(line[145:156],4)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['LO_U_ML_RT']=convertnumber(line[156:167],4)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['LOMRC']=convertnumber(line[167:178],2)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['RATE_ZN_IRIA']=line[178:179] 
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['RATE_ZN_IAIA']=line[179:180] 
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['RATE_ZN_LOC']=line[180:181]
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['DSCT_FAC_LOC']=convertnumber(line[181:186],4)
 #        CSR_USOC_tbl['RATE_BAND']=line[x:x] ???????????????????????????????
-        CSR_USOC_tbl['SPDF_INTERST']=convertnumber(line[207:212],4)
-        CSR_USOC_tbl['SPDF_INTRAST']=convertnumber(line[212:217],4)
-        
-        CSR_USOC_tbl['AFLEX_PC_PCT']=a_pcfpct  #comes from 1521000 record
-        CSR_USOC_tbl['INPUT_RECORDS']+=","+str(record_id)
-        process_insert_table("CAIMS_CSR_USOC", CSR_USOC_tbl, CSR_USOC_DEFN_DICT,con,output_log)  
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['SPDF_INTERST']=convertnumber(line[207:212],4)
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['SPDF_INTRAST']=convertnumber(line[212:217],4)
  
- 
-  
- 
+        csr_usoc_records[usocKeys[current_usoc_key_concat]]['AFLEX_PC_PCT']=a_pcfpct  #comes from 1521000 record
+#        CSR_USOC_tbl['INPUT_RECORDS']+=","+str(record_id)
 
+        #writelog("update csr_usoc 152101",output_log)  
     else:
 #        error 01 record should always follow
         writelog("ERROR: a 152001 record should always follow a 152000.  Current record " \
@@ -2019,90 +1856,60 @@ def initialize_tbl(tbl):
             else:
                 CSR_BCCBSPL_tbl[key]=''        
     elif tbl == 'CSR_ACTLREC_tbl':
-        CSR_ACTLREC_tbl['ACNA']=current_abbd_rec_key['ACNA']    
-        CSR_ACTLREC_tbl['EOB_DATE']=current_abbd_rec_key['EOB_DATE']
-        CSR_ACTLREC_tbl['BAN']=current_abbd_rec_key['BAN'] 
         for key,value in CSR_ACTLREC_tbl.items() :
             if key in ('ACNA', 'BAN', 'EOB_DATE'):
                 pass
             else:
                 CSR_ACTLREC_tbl[key]='' 
     elif tbl == 'CSR_CKT_tbl':
-        CSR_CKT_tbl['ACNA']=current_abbd_rec_key['ACNA']    
-        CSR_CKT_tbl['EOB_DATE']=current_abbd_rec_key['EOB_DATE']
-        CSR_CKT_tbl['BAN']=current_abbd_rec_key['BAN'] 
         for key,value in CSR_CKT_tbl.items() :
             if key in ('ACNA', 'BAN', 'EOB_DATE'):
                 pass
             else:
                 CSR_CKT_tbl[key]=''   
     elif tbl == 'CSR_LOC_tbl':
-        CSR_LOC_tbl['ACNA']=current_abbd_rec_key['ACNA']    
-        CSR_LOC_tbl['EOB_DATE']=current_abbd_rec_key['EOB_DATE']
-        CSR_LOC_tbl['BAN']=current_abbd_rec_key['BAN'] 
         for key,value in CSR_LOC_tbl.items() :
             if key in ('ACNA', 'BAN', 'EOB_DATE'):
                 pass
             else:
                 CSR_LOC_tbl[key]='' 
     elif tbl == 'CSR_LFID_tbl':
-        CSR_LFID_tbl['ACNA']=current_abbd_rec_key['ACNA']    
-        CSR_LFID_tbl['EOB_DATE']=current_abbd_rec_key['EOB_DATE']
-        CSR_LFID_tbl['BAN']=current_abbd_rec_key['BAN'] 
         for key,value in CSR_LFID_tbl.items() :
             if key in ('ACNA', 'BAN', 'EOB_DATE'):
                 pass
             else:
                 CSR_LFID_tbl[key]='' 
     elif tbl == 'CSR_COSFID_tbl':
-        CSR_COSFID_tbl['ACNA']=current_abbd_rec_key['ACNA']    
-        CSR_COSFID_tbl['EOB_DATE']=current_abbd_rec_key['EOB_DATE']
-        CSR_COSFID_tbl['BAN']=current_abbd_rec_key['BAN'] 
         for key,value in CSR_COSFID_tbl.items() :
             if key in ('ACNA', 'BAN', 'EOB_DATE'):
                 pass
             else:
                 CSR_COSFID_tbl[key]='' 
     elif tbl == 'CSR_UFID_tbl':
-        CSR_UFID_tbl['ACNA']=current_abbd_rec_key['ACNA']    
-        CSR_UFID_tbl['EOB_DATE']=current_abbd_rec_key['EOB_DATE']
-        CSR_UFID_tbl['BAN']=current_abbd_rec_key['BAN'] 
         for key,value in CSR_UFID_tbl.items() :
             if key in ('ACNA', 'BAN', 'EOB_DATE'):
                 pass
             else:
                 CSR_UFID_tbl[key]=''
     elif tbl == 'CSR_USOC_tbl':
-        CSR_USOC_tbl['ACNA']=current_abbd_rec_key['ACNA']    
-        CSR_USOC_tbl['EOB_DATE']=current_abbd_rec_key['EOB_DATE']
-        CSR_USOC_tbl['BAN']=current_abbd_rec_key['BAN'] 
         for key,value in CSR_USOC_tbl.items() :
             if key in ('ACNA', 'BAN', 'EOB_DATE'):
                 pass
             else:
                 CSR_USOC_tbl[key]=''
     elif tbl == 'CSR_CUFID_tbl':
-        CSR_CUFID_tbl['ACNA']=current_abbd_rec_key['ACNA']    
-        CSR_CUFID_tbl['EOB_DATE']=current_abbd_rec_key['EOB_DATE']
-        CSR_CUFID_tbl['BAN']=current_abbd_rec_key['BAN'] 
         for key,value in CSR_CUFID_tbl.items() :
             if key in ('ACNA', 'BAN', 'EOB_DATE'):
                 pass
             else:
                 CSR_CUFID_tbl[key]=''
     elif tbl == 'CSR_CFID_tbl':
-        CSR_CFID_tbl['ACNA']=current_abbd_rec_key['ACNA']    
-        CSR_CFID_tbl['EOB_DATE']=current_abbd_rec_key['EOB_DATE']
-        CSR_CFID_tbl['BAN']=current_abbd_rec_key['BAN'] 
         for key,value in CSR_CFID_tbl.items() :
             if key in ('ACNA', 'BAN', 'EOB_DATE'):
                 pass
             else:
                 CSR_CFID_tbl[key]=''
     elif tbl == 'CSR_BILLREC_tbl':
-        CSR_BILLREC_tbl['ACNA']=current_abbd_rec_key['ACNA']    
-        CSR_BILLREC_tbl['EOB_DATE']=current_abbd_rec_key['EOB_DATE']
-        CSR_BILLREC_tbl['BAN']=current_abbd_rec_key['BAN'] 
         for key,value in CSR_BILLREC_tbl.items() :
             if key in ('ACNA', 'BAN', 'EOB_DATE'):
                 pass
@@ -2112,8 +1919,63 @@ def initialize_tbl(tbl):
         process_ERROR_END("ERROR: No initialization code for "+tbl+" in the initialize_tbl method.")
 
     
+def initialize_sequences():
+    global csr_actlrec_sq
+    global csr_bccbspl_sq
+    global csr_billrec_sq
+    global csr_cfid_sq
+    global csr_ckt_sq
+    global csr_cktusoc_sq
+    global csr_cosfid_sq
+    global csr_cufid_sq
+    global csr_lfid_sq
+    global csr_loc_sq
+    global csr_ufid_sq
+    global csr_usoc_sq
+    csr_actlrec_sq = get_new_sequence("SQ_CSR_ACTLREC") - 10000000    
+    csr_bccbspl_sq = get_new_sequence("SQ_CSR_BCCBSPL") - 10000000    
+    csr_billrec_sq = get_new_sequence("SQ_CSR_BILLREC") - 10000000
+    csr_cfid_sq = get_new_sequence("SQ_CSR_CFID") - 10000000
+    csr_ckt_sq = get_new_sequence("SQ_CSR_CKT") - 10000000
+    csr_cktusoc_sq = get_new_sequence("SQ_CSR_CKTUSOC") - 10000000
+    csr_cosfid_sq = get_new_sequence("SQ_CSR_COSFID") - 10000000    
+    csr_cufid_sq = get_new_sequence("SQ_CSR_CUFID") - 10000000
+    csr_lfid_sq = get_new_sequence("SQ_CSR_LFID") - 10000000
+    csr_loc_sq = get_new_sequence("SQ_CSR_LOC") - 10000000
+    csr_ufid_sq = get_new_sequence("SQ_CSR_UFID") - 10000000
+    csr_usoc_sq = get_new_sequence("SQ_CSR_USOC") - 10000000
+
+    writelog("Sequences Set", output_log)
    
 ####END INITIALIZE PROCEDURES
+    
+def get_new_sequence(sequence_name):    
+    selCur = con.cursor()
+    sqlStmt="SELECT " + sequence_name +".nextval FROM dual"
+    selCur.execute(sqlStmt)
+    seqId = selCur.fetchone()[0]        
+    selCur.close()
+    return seqId
+    
+#def update_sequence(sequence_name, increment_value):
+#      #alter sequence seq increment by (value);
+#      #select seq.nextval from dual;
+#      #alter sequence seq increment by (1);
+#    if increment_value > 0:              
+#        selCur = con.cursor()
+#        sqlStmt="alter sequence " + sequence_name +" increment by " + str(increment_value)
+#        selCur.execute(sqlStmt)
+#        con.commit()
+#        sqlStmt="SELECT " + sequence_name +".nextval FROM dual"
+#        selCur.execute(sqlStmt)
+#        con.commit()
+#        sqlStmt="alter sequence " + sequence_name +" increment by 1"
+#        selCur.execute(sqlStmt)
+#        con.commit()
+#        selCur.close()
+#        writelog("Sequence " + sequence_name + " Updated", output_log)
+#    else:
+#        writelog("No records to update Sequence" + sequence_name, output_log)
     
 def count_record(currec,unknownRec):
     global record_counts
@@ -2131,10 +1993,7 @@ def count_record(currec,unknownRec):
             record_counts[str(currec).rstrip(' ')]=1 
     
  
-
-   
 def process_write_program_stats():
-#    debug("****** procedure==>  "+whereami()+" ******")
     global record_counts
     global unknown_record_counts
     global CSR_KEY_cnt
@@ -2184,7 +2043,6 @@ def process_write_program_stats():
 
 
 def process_ERROR_END(msg):
-#    debug("****** procedure==>  "+whereami()+" ******")    
     global output_log
     writelog("ERROR:"+msg,output_log)
 #    debug("ERROR:"+msg)
@@ -2195,7 +2053,6 @@ def process_ERROR_END(msg):
     
     
 def process_close_files():
-#    debug("****** procedure==>  "+whereami()+" ******")
     global csr_input,  output_log
     global output_log
     
@@ -2206,11 +2063,11 @@ def process_close_files():
     output_log.close()
    
     
-    
 def endProg(msg):
-#    debug("****** procedure==>  "+whereami()+" ******")
     global output_log
  
+    ###print "updating sequences"
+    ############################update_sequences()
     con.commit()
     con.close()
     
@@ -2225,6 +2082,211 @@ def endProg(msg):
      
     process_close_files()
 
+def process_inserts():
+    global csr_bccbspl_records, csr_actlrec_records, csr_billrec_records, csr_ckt_records, csr_loc_records, csr_cfid_records
+    global csr_cosfid_records, csr_cufid_records, csr_ufid_records, csr_lfid_records, csr_usoc_records, csr_cktusoc_records
+    global CSR_BCCBSPL_DEFN_DICT, CSR_ACTLREC_DEFN_DICT, CSR_BILLREC_DEFN_DICT, CSR_CKT_DEFN_DICT
+    global TMP_TEST_EXMANY_DEFN_DICT
+    global CSR_LOC_DEFN_DICT, CSR_CFID_DEFN_DICT, CSR_COSFID_DEFN_DICT, CSR_CUFID_DEFN_DICT
+    global CSR_UFID_DEFN_DICT, CSR_LFID_DEFN_DICT, CSR_USOC_DEFN_DICT
+    global con
+    global output_log
+    global schema
+    global bccbspl_insert_cnt, actlrec_insert_cnt, billrec_insert_cnt, ckt_insert_cnt, loc_insert_cnt, cfid_insert_cnt
+    global cosfid_insert_cnt, cufid_insert_cnt, ufid_insert_cnt, lfid_insert_cnt, usoc_insert_cnt, cktusoc_insert_cnt
+    global cntr, rows, insql, results, inscnt
+    
+    results={}
+    selCur = con.cursor()
+
+    cntr=0
+    rows=[]
+    insql=""
+    inscnt=0
+    
+    if len(csr_bccbspl_records) > 0:
+        for key, value in csr_bccbspl_records.items():
+            inscnt+=1
+            tmpResult=process_insert_many_table("CAIMS_CSR_BCCBSPL", value, CSR_BCCBSPL_DEFN_DICT,con,schema, 'SQ_CSR_BCCBSPL',output_log)        
+            results=copy.deepcopy(tmpResult)
+            prepareInsert(value)
+        selCur.prepare(str(insql))
+        selCur.executemany(None, rows)
+        con.commit()      
+        resetVals()
+
+    if len(csr_actlrec_records) > 0:
+        for key, value in csr_actlrec_records.items():
+            inscnt+=1
+            tmpResult=process_insert_many_table("CAIMS_CSR_ACTLREC", value, CSR_ACTLREC_DEFN_DICT,con,schema, 'SQ_CSR_ACTLREC',output_log)        
+            results=copy.deepcopy(tmpResult)
+            prepareInsert(value)
+        selCur.prepare(str(insql))
+        selCur.executemany(None, rows)
+        con.commit()      
+        resetVals()        
+    
+    if len(csr_billrec_records) > 0:  
+        for key, value in csr_billrec_records.items():       
+            tmpResult=process_insert_many_table("CAIMS_CSR_BILLREC", value, CSR_BILLREC_DEFN_DICT,con,schema, 'SQ_CSR_BILLREC',output_log)        
+            results=copy.deepcopy(tmpResult)
+            prepareInsert(value)
+        selCur.prepare(str(insql))
+        selCur.executemany(None, rows)
+        con.commit()      
+        resetVals()
+        
+    if len(csr_ckt_records) > 0:
+        for key, value in csr_ckt_records.items():
+            tmpResult=process_insert_many_table("CAIMS_CSR_CKT", value, CSR_CKT_DEFN_DICT,con,schema, 'SQ_CSR_CKT',output_log)                
+            results=copy.deepcopy(tmpResult)
+            prepareInsert(value)
+        selCur.prepare(str(insql))
+        selCur.executemany(None, rows)
+        con.commit()      
+        resetVals()
+    
+    if len(csr_loc_records) > 0:    
+        for key, value in csr_loc_records.items():
+            tmpResult=process_insert_many_table("CAIMS_CSR_LOC", value, CSR_LOC_DEFN_DICT,con,schema, 'SQ_CSR_LOC',output_log)        
+            results=copy.deepcopy(tmpResult)
+            prepareInsert(value)
+        selCur.prepare(str(insql))
+        selCur.executemany(None, rows)
+        con.commit()      
+        resetVals()
+   
+    if len(csr_cfid_records) > 0:     
+        for key, value in csr_cfid_records.items():
+            tmpResult=process_insert_many_table("CAIMS_CSR_CFID", value, CSR_CFID_DEFN_DICT,con,schema, 'SQ_CSR_CFID',output_log)        
+            results=copy.deepcopy(tmpResult)
+            prepareInsert(value)
+        selCur.prepare(str(insql))
+        selCur.executemany(None, rows)
+        con.commit()      
+        resetVals()
+    
+    if len(csr_cosfid_records) > 0:
+        for key, value in csr_cosfid_records.items():
+            tmpResult=process_insert_many_table("CAIMS_CSR_COSFID", value, CSR_COSFID_DEFN_DICT,con,schema, 'SQ_CSR_COSFID',output_log)        
+            results=copy.deepcopy(tmpResult)
+            prepareInsert(value)
+        selCur.prepare(str(insql))
+        selCur.executemany(None, rows)
+        con.commit()      
+        resetVals()
+        
+    if len(csr_cufid_records) > 0:        
+        for key, value in csr_cufid_records.items():
+            tmpResult=process_insert_many_table("CAIMS_CSR_CUFID", value, CSR_CUFID_DEFN_DICT,con,schema, 'SQ_CSR_CUFID',output_log)        
+            results=copy.deepcopy(tmpResult)
+            prepareInsert(value)
+        selCur.prepare(str(insql))
+        selCur.executemany(None, rows)
+        con.commit()      
+        resetVals()
+    
+    if len(csr_ufid_records) > 0:
+        for key, value in csr_ufid_records.items():
+            tmpResult=process_insert_many_table("CAIMS_CSR_UFID", value, CSR_UFID_DEFN_DICT,con,schema, 'SQ_CSR_UFID',output_log)        
+            results=copy.deepcopy(tmpResult)
+            prepareInsert(value)
+        selCur.prepare(str(insql))
+        selCur.executemany(None, rows)
+        con.commit()      
+        resetVals()
+
+    if len(csr_lfid_records) > 0:
+        for key, value in csr_lfid_records.items():
+            tmpResult=process_insert_many_table("CAIMS_CSR_LFID", value, CSR_LFID_DEFN_DICT,con,schema, 'SQ_CSR_LFID',output_log)        
+            results=copy.deepcopy(tmpResult)
+            prepareInsert(value)
+        selCur.prepare(str(insql))
+        selCur.executemany(None, rows)
+        con.commit()      
+        resetVals()
+
+    if len(csr_usoc_records) > 0:           
+        for key, value in csr_usoc_records.items():
+            tmpResult=process_insert_many_table("CAIMS_CSR_USOC", value, CSR_USOC_DEFN_DICT,con,schema, 'SQ_CSR_USOC',output_log)        
+            results=copy.deepcopy(tmpResult)
+            prepareInsert(value)
+        selCur.prepare(str(insql))
+        selCur.executemany(None, rows)
+        con.commit()      
+        resetVals()
+     
+    if len(csr_cktusoc_records) > 0:       
+        for key, value in csr_cktusoc_records.items():
+            tmpResult=process_insert_many_table("CAIMS_CSR_CKTUSOC", value, CSR_CKTUSOC_DEFN_DICT,con,schema, 'SQ_CSR_CKTUSOC',output_log)        
+            results=copy.deepcopy(tmpResult)
+            prepareInsert(value)
+        selCur.prepare(str(insql))
+        selCur.executemany(None, rows)
+        con.commit()      
+        resetVals()        
+
+    selCur.close()
+    
+    bccbspl_insert_cnt+=len(csr_bccbspl_records)
+    actlrec_insert_cnt+=len(csr_actlrec_records)
+    billrec_insert_cnt+=len(csr_billrec_records)
+    ckt_insert_cnt+=len(csr_ckt_records)
+    loc_insert_cnt+=len(csr_loc_records)
+    cfid_insert_cnt+=len(csr_cfid_records)
+    cosfid_insert_cnt+=len(csr_cosfid_records)
+    cufid_insert_cnt+=len(csr_cufid_records)
+    ufid_insert_cnt+=len(csr_ufid_records)
+    lfid_insert_cnt+=len(csr_lfid_records)
+    usoc_insert_cnt+=len(csr_usoc_records)
+    cktusoc_insert_cnt+=len(csr_cktusoc_records)
+    
+    csr_bccbspl_records={}
+    csr_actlrec_records={}
+    csr_billrec_records={}
+    csr_ckt_records={}
+    csr_loc_records={}
+    csr_cfid_records={}
+    csr_cosfid_records={}
+    csr_cufid_records={}
+    csr_ufid_records={}
+    csr_lfid_records={}
+    csr_usoc_records={}
+    csr_cktusoc_records={}
+    
+    #writelog("Records Inserted", output_log)
+
+#def update_sequences():
+#    global bccbspl_insert_cnt, ckt_insert_cnt, actlrec_insert_cnt, billrec_insert_cnt
+#    global loc_insert_cnt, cfid_insert_cnt, cufid_insert_cnt, cosfid_insert_cnt
+#    global lfid_insert_cnt, ufid_insert_cnt
+#
+#    update_sequence("SQ_CSR_BCCBSPL", bccbspl_insert_cnt)
+#    update_sequence("SQ_CSR_CKT", ckt_insert_cnt)
+#    update_sequence("SQ_CSR_ACTLREC", actlrec_insert_cnt)    
+#    update_sequence("SQ_CSR_BILLREC", billrec_insert_cnt)
+#    update_sequence("SQ_CSR_LOC", loc_insert_cnt)
+#    update_sequence("SQ_CSR_CFID", cfid_insert_cnt)
+#    update_sequence("SQ_CSR_CUFID", cufid_insert_cnt)
+#    update_sequence("SQ_CSR_COSFID", cosfid_insert_cnt)
+#    update_sequence("SQ_CSR_LFID", lfid_insert_cnt)
+#    update_sequence("SQ_CSR_UFID", ufid_insert_cnt)    
+#    update_sequence("SQ_CSR_USOC", csr_usoc_sq)
+#    update_sequence("SQ_CSR_CKTUSOC", csr_cktusoc_sq)
+
+def prepareInsert(val):
+    global insql,results,cntr,rows
+    if cntr==0:
+        insql=str(results['firstPart']) + " values " + str(results['bindVars'])
+        cntr+=1
+    tmpSecond=tuple(results['secondPart'])            
+    rows.append(tmpSecond)
+    #rows.append(val)
+def resetVals():
+    global cntr, rows, insql
+    cntr=0
+    rows=[]
+    insql=""
 
 
 "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
