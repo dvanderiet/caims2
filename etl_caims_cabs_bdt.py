@@ -42,11 +42,15 @@ import sys
 import ConfigParser
 import platform
 import os
+#temp
+import getpass
+#temp
 
 ###IMPORT COMMON/SHARED UTILITIES
 from etl_caims_cabs_utility import  process_insert_table, process_update_table, writelog, convertnumber, \
-                                   createTableTypeDict,translate_TACCNT_FGRP ,process_check_exists,invalid_acna_chars  
-
+                                   createTableTypeDict,translate_TACCNT_FGRP ,process_check_exists,invalid_acna_chars, set_meta_vars
+                                   
+                                   
 settings = ConfigParser.ConfigParser();
 settings.read('settings.ini')
 settings.sections()
@@ -93,6 +97,20 @@ if os.path.isfile(IP_FILENM_AND_PATH):
 else:
     raise Exception("ERROR: File not found:"+IP_FILENM_AND_PATH)
 
+
+#Database Metadata information
+global meta_load_dtm
+global meta_upd_dtm
+global running_user
+global eob_date
+global file_hdr_id
+
+ 
+meta_load_dtm="to_timestamp('%s', 'YYYY-MM-DD HH24:MI:SS.FF3')"  % str(startTM)[:-3]
+meta_upd_dtm=meta_load_dtm
+running_user=getpass.getuser().upper()
+file_hdr_id=0
+
 "GLOBAL VARIABLES"     
 #record_id='123456'
 
@@ -123,6 +141,7 @@ def init():
     
     global bdt_input 
     global record_id,output_log
+    global file_hdr_id
  
     "OPEN FILES"
     "   CABS INPUT FILE"
@@ -148,7 +167,11 @@ def init():
     
     if record_id not in settings.get('BDTSettings','BDTHDR'):
         process_ERROR_END("The first record in the input file was not a "+settings.get('BDTSettings','BDTHDR').rstrip(' ')+" record.")
-
+        
+    #More Database Metadata information
+    file_hdr_id=headerLine[6:20]
+    process_insert_table.file_hdr_id=file_hdr_id
+    
     writelog("Process "+sys.argv[0],output_log)
     writelog("   started execution at: " + str(startTM),output_log)
     writelog(STAR_LINE,output_log)
@@ -408,7 +431,13 @@ def process_bill_records():
     global firstBillingRec
     global tstx, verno, tsty
     global inputLineCnt
-   
+    global eob_date
+#Metadata fields
+    global meta_load_dtm
+    global meta_upd_dtm
+    global running_user
+    global eob_date
+    global file_hdr_id    
     
     tstx=line[77:79]
     verno=line[82:84]
@@ -421,6 +450,10 @@ def process_bill_records():
         writelog("** BOS VERSION NUMBER IS "+verno+" ** ",output_log)
         writelog("**--------------------------**",output_log)
         firstBillingRec=False
+    #More Database Metadata information
+        eob_date=line[11:17]
+        set_meta_vars(meta_load_dtm,meta_upd_dtm,running_user, eob_date,file_hdr_id)
+       
         
     unknownRecord=False
     #BCCBBIL/ROOT/BALDUE always have 010100, 050500, and 051000    
@@ -658,7 +691,7 @@ def process_TYP0512_CRNT1():
     global baldtl_prevKey
     global stlvcc    
     global dinvdatecc
-    
+
     if line[77:79] =='XX':
         pass
     else:
@@ -812,7 +845,8 @@ def process_TYP0513_CRNT2():
     global baldtl_prevKey
     global dinvdatecc
     #?not sure why record_id is recognized in this para when it is not declared global???    
-    
+        #metadata info 
+
     initialize_tbl('BDT_CRNT2_tbl')
     
     if crnt1_id == 0:

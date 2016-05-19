@@ -5,10 +5,8 @@
 
 """
 
-import datetime
 #import inspect
 #import collections
-startTM=datetime.datetime.now();  
 import cx_Oracle
 import re
 #import sys
@@ -19,7 +17,13 @@ import re
 ##Global variables
 global  con
 global record_counts,unknown_record_counts
- 
+global meta_load_dtm
+global meta_upd_dtm
+global running_user 
+global eob_date
+global file_hdr_id   
+
+
 #record_counts={}
 #unknown_record_counts={} 
 ##http://www.3480-3590-data-conversion.com/article-signed-fields.html
@@ -125,13 +129,33 @@ def process_check_exists(tbl_name, tbl_rec,tbl_dic,con,schema,output_log):
     else:
         return 0
    
-        
+def set_meta_vars(load_dt,upd_dt,user, partition_date,file_hdr):
+    global meta_load_dtm
+    global meta_upd_dtm
+    global running_user 
+    global eob_date
+    global file_hdr_id   
+     
+    meta_load_dtm=load_dt
+    meta_upd_dtm=upd_dt
+    running_user=user
+    eob_date=format_date(partition_date)
+    file_hdr_id=file_hdr
+
 
     
 def process_insert_table(tbl_name, tbl_rec,tbl_dic,con,schema,seq_name,output_log):
-    global StartTM
-    firstPart="INSERT INTO "+schema+"."+tbl_name+" (ID," #add columns
-    secondPart=" VALUES ("+str(seq_name)+".nextVal,"  #add values
+    global meta_load_dtm
+    global meta_upd_dtm
+    global running_user 
+    global eob_date
+    global file_hdr_id   
+ 
+    
+#    firstPart="INSERT INTO "+schema+"."+tbl_name+" (ID," #add columns
+#    secondPart=" VALUES ("+str(seq_name)+".nextVal,"  #add values
+    firstPart="INSERT INTO "+schema+"."+tbl_name+" (ID,FILE_HDR_ID,META_LOAD_DTTM,LOAD_ACTIVITY_CUID,META_UPD_DTTM,LAST_ACTIVITY_CUID,"  
+    secondPart=" VALUES ("+str(seq_name)+".nextVal,"+file_hdr_id.rstrip('')+","+meta_load_dtm+",'"+running_user+"',"+meta_upd_dtm+",'"+running_user+"',"    
    
     for key, value in tbl_rec.items() :
         nulVal=False
@@ -175,9 +199,18 @@ def process_insert_table(tbl_name, tbl_rec,tbl_dic,con,schema,seq_name,output_lo
         except KeyError as e:
             writelog("WARNING: Column "+key+" not found in the "+tbl_name+" table.  Skipping.",output_log)
             writelog("KeyError:"+e.message,output_log)
- 
-    firstPart=firstPart.rstrip(',')+")"     
-    secondPart=secondPart.rstrip(',') +")"      
+
+    #if EOB_DATE not part of insert we need to add it.
+    #EOB_DATE is how we're partioning all Oracle tables. 
+#METADATA CHANGES-START
+    if firstPart.find(",EOB_DATE,") >0:
+        firstPart=firstPart.rstrip(',')+")"     
+        secondPart=secondPart.rstrip(',') +")"          
+    else:
+#        firstPart+=key+","
+        firstPart+="EOB_DATE)"
+        secondPart+=eob_date+")"
+#METADATA CHANGES        
      
     insCurs=con.cursor()
     insSQL=firstPart+secondPart  + " returning ID into :id "
@@ -321,8 +354,7 @@ def process_update_table(tbl_name, tbl_rec,tbl_dic,con,schema,output_log,**optio
 
 
 def convertnumber(number, decimalPlaces) :
-    global record_id    
- 
+
     num=number.rstrip(' ').lstrip(' ')
     if num == '':
         return 0
